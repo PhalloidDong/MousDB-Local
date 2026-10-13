@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import html
 import io
+import json
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -434,6 +435,7 @@ class Database:
                 raise ValidationError("cage 不存在")
             rack_id = optional_id(payload.get("rack_id", old["rack_id"]))
             code = str(payload.get("code", old["code"])).strip()
+            if not code:raise ValidationError("笼号不能为空")
             try:
                 conn.execute(
                     """UPDATE cages SET rack_id=?, code=?, capacity=?, purpose=?, color=?, active=?, note=?, updated_at=?
@@ -448,6 +450,31 @@ class Database:
                 raise ValidationError("rack 不存在或笼号重复") from exc
             self.audit(conn, "update", "cage", cage_id, f"更新 cage: {code}")
             return self.get_cage(cage_id, conn)
+
+    def delete_cage(self, cage_id: int) -> dict[str, Any]:
+        """删除当前空笼卡，释放坐标；cage及科研历史保留。
+
+        输入为笼ID；有Active/Experimental小鼠时拒绝删除，必须先移笼。
+        输出为删除回执。不会删除动物、移笼历史或谱系；同一事务更新架位revision，
+        并写入删除历史，防止旧客户端撤销操作把已经删除的笼卡放回架子。
+        """
+        with self.write() as conn:
+            old=conn.execute('SELECT * FROM cages WHERE id=?',(cage_id,)).fetchone()
+            if not old:raise ValidationError('笼不存在')
+            occupied=conn.execute("SELECT COUNT(*) FROM mice WHERE cage_id=? AND status IN ('Active','Experimental')",(cage_id,)).fetchone()[0]
+            if occupied:raise ValidationError('该笼还有'+str(occupied)+'只在养小鼠，请先移笼后再删除')
+            conn.execute('UPDATE cages SET active=0,updated_at=? WHERE id=?',(now_text(),cage_id))
+            exists=conn.execute("SELECT 1 FROM sqlite_master WHERE name='cage_positions'").fetchone()
+            position=conn.execute('SELECT * FROM cage_positions WHERE cage_id=?',(cage_id,)).fetchone() if exists else None
+            if position:
+                rid=position['rack_id']
+                conn.execute('DELETE FROM cage_positions WHERE cage_id=?',(cage_id,))
+                conn.execute('UPDATE rack_layouts SET revision=revision+1,updated_at=? WHERE rack_id=?',(now_text(),rid))
+                revision=conn.execute('SELECT revision FROM rack_layouts WHERE rack_id=?',(rid,)).fetchone()[0]
+                conn.execute("INSERT INTO rack_layout_history(rack_id,action,before_json,after_json,revision,created_at) VALUES(?,'delete_cage',?,'[]',?,?)",
+                             (rid,json.dumps([dict(position)],ensure_ascii=False),revision,now_text()))
+            self.audit(conn,'delete_cage','cage',cage_id,'删除空笼卡，保留历史：'+old['code'])
+            return {'id':cage_id,'code':old['code'],'deleted':True,'history_preserved':True}
 
     # ------------------------------------------------------------------
     # 小鼠编号、校验与写入

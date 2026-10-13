@@ -408,7 +408,23 @@ async function loadCages() {
   $$(`[data-cage]`).forEach(x=>x.onclick=()=>cageDetail(Number(x.dataset.cage)));
 }
 
-async function cageDetail(id) { const c=await api(`/api/cages/${id}`); $("#detail-body").innerHTML=`<h2>Cage ${esc(c.code)}</h2><p>${esc(c.room_name)} / ${esc(c.rack_name)} · ${c.occupied}/${c.capacity} · ${esc(c.purpose||"未设置用途")}</p><h3>当前小鼠</h3>${c.mice.map(m=>`<div class="audit-row"><button class="code-link" data-mouse="${m.id}">${esc(m.ear_tag||"无耳标")} · ${esc(m.code)}</button> · ${m.sex} · <span class="rich-render">${richMarkup(m.line_name_html,m.line_name||"未设置 line")}</span> · <span class="rich-render">${richMarkup(m.genotype_name_html,m.genotype_name)}</span> · ${esc(m.age_label||"待确认")}</div>`).join("")||"空 cage"}<button id="edit-cage">编辑 cage</button>`; $("#detail").showModal(); $$(`[data-mouse]`,$("#detail")).forEach(x=>x.onclick=()=>{$("#detail").close();mouseDetail(Number(x.dataset.mouse));}); $("#edit-cage").onclick=()=>{$("#detail").close();cageForm(c);}; }
+async function cageDetail(id) {
+  const c=await api(`/api/cages/${id}`);
+  $("#detail-body").innerHTML=`<h2>Cage ${esc(c.code)}</h2><p>${esc(c.room_name)} / ${esc(c.rack_name)} · ${c.occupied}/${c.capacity} · ${esc(c.purpose||"未设置用途")}</p><h3>当前小鼠</h3>${c.mice.map(m=>`<div class="audit-row"><button class="code-link" data-mouse="${m.id}">${esc(m.ear_tag||"无耳标")} · ${esc(m.code)}</button> · ${m.sex} · <span class="rich-render">${richMarkup(m.line_name_html,m.line_name||"未设置 line")}</span> · <span class="rich-render">${richMarkup(m.genotype_name_html,m.genotype_name)}</span> · ${esc(m.age_label||"待确认")}</div>`).join("")||"空 cage"}<div class="quick-actions"><button id="edit-cage">编辑 cage</button><button id="delete-cage" class="cage-delete-button" ${c.occupied?'disabled':''} title="${c.occupied?'先移出在养小鼠后才能删除':'删除空笼卡，历史记录保留'}">删除该笼</button></div>${c.occupied?'<p class="muted">本笼仍有在养小鼠，请先移笼再删除。</p>':''}`;
+  $("#detail").showModal();
+  $$(`[data-mouse]`,$("#detail")).forEach(x=>x.onclick=()=>{$("#detail").close();mouseDetail(Number(x.dataset.mouse));});
+  $("#edit-cage").onclick=()=>{$("#detail").close();cageForm(c);};
+  $("#delete-cage").onclick=async()=>{
+    // 点击后再次由服务器检查空笼，避免打开详情后有人新录鼠造成误删。
+    if(!window.confirm(`删除空笼“${c.code}”？笼位将释放，历史记录保留。`))return;
+    const button=$("#delete-cage");button.disabled=true;
+    try{
+      await api(`/api/cages/${id}`,{method:'DELETE'});
+      $("#detail").close();state.cages=[];state.miceAll=[];
+      await loaders[state.page]();notify('已删除空笼卡，历史记录保留');
+    }catch(error){button.disabled=false;notify(error.message,'error');}
+  };
+}
 
 function roomForm(){openEditor("新建 Room",`<div class="form-grid">${field("名称","name","text","","required")}${field("建筑","building")}<label class="field full"><span>备注</span><textarea name="note"></textarea></label></div>`,f=>api("/api/references/rooms",{method:"POST",body:formData(f)}));}
 function rackForm(){openEditor("新建 Rack",`<div class="form-grid">${selectField("Room","room_id",options(state.refs.rooms,"","— 请选择 —"))}${field("名称","name","text","","required")}${field("容量（可空）","capacity","number","","min=1")}<label class="field full"><span>备注</span><textarea name="note"></textarea></label></div>`,f=>api("/api/racks",{method:"POST",body:formData(f)}));}

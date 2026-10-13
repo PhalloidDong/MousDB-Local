@@ -1,4 +1,4 @@
-"""真实架位的事务服务：8行×9列及架旁临时区。
+"""真实架位的事务服务：横8列×竖9行及架旁临时区。
 
 输入：rack_id、固定行列、cage_id和客户端看到的revision。
 输出：同一时刻的架子/笼卡快照；移动、交换、撤销及建笼结果。
@@ -10,7 +10,7 @@ import json,re,sqlite3
 from datetime import date
 from db import Database,ValidationError,now_text,integer
 
-ROWS,COLUMNS=8,9
+ROWS,COLUMNS=9,8
 STATES={'holding':'饲养','experimental':'实验','breeding':'繁育','pending':'待处理','quarantine':'隔离','empty':'空笼'}
 
 class LayoutConflict(ValidationError):
@@ -26,15 +26,15 @@ class RackLayoutStore:
             # 每个架子独立revision；NULL行列表示架旁临时停放。
             c.execute('''CREATE TABLE IF NOT EXISTS rack_layouts(
                 rack_id INTEGER PRIMARY KEY REFERENCES racks(id) ON DELETE CASCADE,
-                rows INTEGER NOT NULL DEFAULT 8 CHECK(rows=8),
-                columns INTEGER NOT NULL DEFAULT 9 CHECK(columns=9),
+                rows INTEGER NOT NULL DEFAULT 9 CHECK(rows=9),
+                columns INTEGER NOT NULL DEFAULT 8 CHECK(columns=8),
                 revision INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)''')
             c.execute('''CREATE TABLE IF NOT EXISTS cage_positions(
                 cage_id INTEGER PRIMARY KEY REFERENCES cages(id) ON DELETE CASCADE,
                 rack_id INTEGER NOT NULL REFERENCES racks(id) ON DELETE CASCADE,
                 row_index INTEGER,column_index INTEGER,card_state TEXT,
                 CHECK((row_index IS NULL AND column_index IS NULL) OR
-                    (row_index IS NOT NULL AND column_index IS NOT NULL AND row_index BETWEEN 1 AND 8 AND column_index BETWEEN 1 AND 9)),
+                    (row_index IS NOT NULL AND column_index IS NOT NULL AND row_index BETWEEN 1 AND 9 AND column_index BETWEEN 1 AND 8)),
                 CHECK(card_state IS NULL OR card_state IN
                     ('holding','experimental','breeding','pending','quarantine','empty')))''')
             c.execute('''CREATE UNIQUE INDEX IF NOT EXISTS idx_rack_unique_slot
@@ -43,8 +43,56 @@ class RackLayoutStore:
                 id INTEGER PRIMARY KEY,rack_id INTEGER NOT NULL REFERENCES racks(id),
                 action TEXT NOT NULL,before_json TEXT NOT NULL,after_json TEXT NOT NULL,
                 revision INTEGER NOT NULL,created_at TEXT NOT NULL,undo_of INTEGER,undone_at TEXT)''')
+            self._upgrade_orientation(c)
             self._sync(c)
-            c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('rack_layout_version','1')")
+            c.execute("INSERT OR REPLACE INTO schema_meta(key,value) VALUES('rack_layout_version','2')")
+
+    def _upgrade_orientation(self,c):
+        """同一事务把旧8行9列约束升级为9行8列。
+
+        输入：旧布局元数据、当前坐标；输出：新约束与原有效坐标。
+        第9列不再存在，相关笼只进入临时区，不猜测新的物理位置。
+        小鼠cage_id、品系、事件及历史表不改；reshape历史阻止撤销旧尺寸的移位。
+        """
+        definition=c.execute("SELECT sql FROM sqlite_master WHERE name='rack_layouts'").fetchone()['sql']
+        legacy=bool(re.search(r'CHECK\s*\(\s*rows\s*=\s*8\s*\)',definition,re.I))
+        if not legacy:return
+        layouts=[dict(r) for r in c.execute('SELECT * FROM rack_layouts')]
+        positions=[dict(r) for r in c.execute('SELECT * FROM cage_positions')]
+        # 两张布局表只引用原有racks/cages；历史表引用racks，可原样保留。
+        c.execute('''CREATE TABLE rack_layouts_next(
+            rack_id INTEGER PRIMARY KEY REFERENCES racks(id) ON DELETE CASCADE,
+            rows INTEGER NOT NULL DEFAULT 9 CHECK(rows=9),
+            columns INTEGER NOT NULL DEFAULT 8 CHECK(columns=8),
+            revision INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)''')
+        c.execute('''CREATE TABLE cage_positions_next(
+            cage_id INTEGER PRIMARY KEY REFERENCES cages(id) ON DELETE CASCADE,
+            rack_id INTEGER NOT NULL REFERENCES racks(id) ON DELETE CASCADE,
+            row_index INTEGER,column_index INTEGER,card_state TEXT,
+            CHECK((row_index IS NULL AND column_index IS NULL) OR
+                (row_index IS NOT NULL AND column_index IS NOT NULL AND row_index BETWEEN 1 AND 9 AND column_index BETWEEN 1 AND 8)),
+            CHECK(card_state IS NULL OR card_state IN
+                ('holding','experimental','breeding','pending','quarantine','empty')))''')
+        for layout in layouts:
+            c.execute('INSERT INTO rack_layouts_next(rack_id,revision,updated_at) VALUES(?,?,?)',
+                      (layout['rack_id'],layout['revision'],layout['updated_at']))
+        for position in positions:
+            row,col=position['row_index'],position['column_index']
+            if row is not None and (row>ROWS or col>COLUMNS):row=col=None
+            c.execute('INSERT INTO cage_positions_next VALUES(?,?,?,?,?)',
+                      (position['cage_id'],position['rack_id'],row,col,position['card_state']))
+        c.execute('DROP TABLE cage_positions')
+        c.execute('DROP TABLE rack_layouts')
+        c.execute('ALTER TABLE rack_layouts_next RENAME TO rack_layouts')
+        c.execute('ALTER TABLE cage_positions_next RENAME TO cage_positions')
+        c.execute('CREATE UNIQUE INDEX idx_rack_unique_slot ON cage_positions(rack_id,row_index,column_index) WHERE row_index IS NOT NULL')
+        for layout in layouts:
+            rid=layout['rack_id']
+            before=[p for p in positions if p['rack_id']==rid]
+            after=[dict(p) for p in c.execute('SELECT * FROM cage_positions WHERE rack_id=?',(rid,))]
+            self._record(c,rid,'reshape',before,after)
+            parked=sum(p['column_index']==9 for p in before)
+            self.db.audit(c,'reshape','rack',rid,'架位改为横8列/竖9行；原第9列进入临时区：'+str(parked)+'笼')
 
     def _touch(self,c,rack_id):
         c.execute('UPDATE rack_layouts SET revision=revision+1,updated_at=? WHERE rack_id=?',(now_text(),rack_id))
@@ -81,7 +129,7 @@ class RackLayoutStore:
         row,col=payload.get('row'),payload.get('column')
         if row is None and col is None:return None,None
         row=self._positive(row,'行');col=self._positive(col,'列')
-        if row>ROWS or col>COLUMNS:raise ValidationError('笼位超出8行×9列')
+        if row>ROWS or col>COLUMNS:raise ValidationError('笼位超出横8列×竖9行')
         return row,col
 
     def _rack(self,c,rack_id,expected=None):

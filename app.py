@@ -185,6 +185,14 @@ class AppHandler(BaseHTTPRequestHandler):
             return self._json(404,error="API 路径不存在")
         except Exception as exc: self._handle_error(exc)
 
+    def do_DELETE(self) -> None:
+        """只允许删除空笼卡；动物和历史由业务层保留。"""
+        try:
+            match=re.fullmatch(r"/api/cages/(\d+)",urlparse(self.path).path)
+            if match:return self._json(200,DB.delete_cage(int(match.group(1))))
+            return self._json(404,error="API路径不存在")
+        except Exception as exc:self._handle_error(exc)
+
 
 def find_port(preferred: int = 8765) -> int:
     for port in range(preferred, preferred + 50):

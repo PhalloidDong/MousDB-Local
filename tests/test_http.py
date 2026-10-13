@@ -21,5 +21,17 @@ class HttpTests(unittest.TestCase):
         alive=json.loads(self.get("/api/mice?scope=alive").read())["data"];dead=json.loads(self.get("/api/mice?scope=dead").read())["data"]
         self.assertEqual(len(alive),0);self.assertEqual(len(dead),1)
 
+    def test_cage_rename_and_empty_delete_routes(self):
+        """验证网页实际使用的PUT/DELETE入口，使用合成空笼且保留历史查询能力。"""
+        room=app.DB.create_reference('rooms',{'name':'DEMO room'})
+        rack=app.DB.create_rack({'room_id':room['id'],'name':'DEMO rack'})
+        cage=app.DB.create_cage({'rack_id':rack['id'],'code':'DEMO cage'})
+        changed=self.send(f"/api/cages/{cage['id']}",'PUT',{'code':'DEMO renamed'})
+        self.assertEqual(changed['code'],'DEMO renamed')
+        result=self.send(f"/api/cages/{cage['id']}",'DELETE',{})
+        self.assertTrue(result['deleted'])
+        detail=json.loads(self.get(f"/api/cages/{cage['id']}").read())['data']
+        self.assertEqual(detail['active'],0)
+
 if __name__=="__main__": unittest.main()
 

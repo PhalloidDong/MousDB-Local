@@ -9,7 +9,7 @@ window.RackBoard=(()=>{
   const root=document.getElementById("rack-home");
   let model=null,racks=[],selected=null,sortables=[],busy=false,lastDrag=0;
   let search="",zoom=localStorage.getItem("mousdb-rack-zoom")||"100";
-  const letters="ABCDEFGH",sexLabel={M:"♂",F:"♀",U:"?"};
+  const letters="ABCDEFGHI",sexLabel={M:"♂",F:"♀",U:"?"};
   const coordinate=(row,col)=>row==null?"临时区":`${letters[row-1]}${col}`;
   const address=c=>coordinate(c.row_index,c.column_index);
   const unique=values=>[...new Set(values.filter(Boolean))];
@@ -26,7 +26,7 @@ window.RackBoard=(()=>{
     selected=racks.some(r=>r.id===preferred)?preferred:racks[0]?.id;
     if(!selected){
       destroyDrag();model=null;
-      root.innerHTML='<article class="rack-onboarding"><span class="rack-eyebrow">YOUR ANIMAL ROOM</span><h2>建立第一座真实架子</h2><p>每座架子有8行、9列，共72个笼位。</p><button class="primary" data-rack-new>＋ 新建架子</button></article>';
+      root.innerHTML='<article class="rack-onboarding"><span class="rack-eyebrow">YOUR ANIMAL ROOM</span><h2>建立第一座真实架子</h2><p>每座架子横向8列、纵向9行，共72个笼位。</p><button class="primary" data-rack-new>＋ 新建架子</button></article>';
       return;
     }
     model=await api(`/api/rack-layouts/${selected}`);
@@ -46,7 +46,7 @@ window.RackBoard=(()=>{
       ${genotypes.length>1||lines.length>1?`<small class="rack-individual-genotype">${esc([m.line_name,m.genotype_name].filter(Boolean).join(" · ")||"基因型待确认")}</small>`:""}
     </div>`).join("");
     return `<article class="rack-card state-${esc(c.state)}" data-cage-id="${c.id}" data-searchtext="${esc(text)}" aria-label="${esc(c.code)}，${esc(c.state_label)}，${c.occupied}只小鼠">
-      <div class="rack-card-handle" title="拖动整笼，调整位置"><span class="rack-grip" aria-hidden="true">⠿</span><strong>${esc(c.code)}</strong><span class="rack-count">${c.occupied}/${c.capacity}</span></div>
+      <div class="rack-card-handle" title="拖动整笼，调整位置"><span class="rack-grip" aria-hidden="true">⠿</span><button type="button" class="rack-cage-name" data-rack-rename="${c.id}" title="双击重命名；也可按Enter或F2" aria-label="重命名${esc(c.code)}">${esc(c.code)}</button><span class="rack-count">${c.occupied}/${c.capacity}</span></div>
       <div class="rack-card-tools"><button type="button" class="rack-state-chip" data-rack-state="${c.id}" title="设置笼状态">${esc(c.state_label)}<span>⌄</span></button><span class="rack-coordinate">${address(c)}</span><button type="button" class="rack-card-menu" data-rack-move="${c.id}" aria-label="移动${esc(c.code)}到指定位置" title="移动到指定位置">↗</button></div>
       <div class="rack-card-body">
         <div class="rack-genotype"><b>品系</b> ${esc(strains.join(" / ")||"待录入")}${lines.length?`<br><b>Line</b> ${esc(lines.join(" / "))}`:""}<br><b>基因型</b> ${esc(genotypes.join(" / ")||"待确认")}</div>
@@ -60,7 +60,7 @@ window.RackBoard=(()=>{
     destroyDrag();if(!model)return;
     const placed=new Map(model.cards.filter(c=>c.row_index!=null).map(c=>[`${c.row_index}:${c.column_index}`,c]));
     let cells="";
-    for(let row=1;row<=8;row++)for(let col=1;col<=9;col++){
+    for(let row=1;row<=model.rack.rows;row++)for(let col=1;col<=model.rack.columns;col++){
       const c=placed.get(`${row}:${col}`),label=coordinate(row,col);
       cells+=`<div class="rack-dropzone rack-slot ${c?'occupied':'unoccupied'}" data-row="${row}" data-column="${col}" role="gridcell" aria-rowindex="${row}" aria-colindex="${col}" aria-label="${label}${c?' '+esc(c.code):' 空笼位'}">
         <span class="rack-slot-label">${label}</span>${c?card(c):`<button type="button" class="rack-empty-add" data-add-row="${row}" data-add-col="${col}" aria-label="在${label}添加笼"><span>＋</span><small>空笼位</small></button>`}
@@ -71,11 +71,11 @@ window.RackBoard=(()=>{
       <div><span class="rack-eyebrow">ANIMAL ROOM / LIVE RACK</span><div class="rack-current-location"><span class="rack-room-dot"></span>${esc(model.rack.room_name)}<span class="rack-slash">/</span><strong>${esc(model.rack.name)}</strong></div>${model.rack.note?`<p class="rack-location-note">${esc(model.rack.note)}</p>`:""}</div>
       <div class="rack-location-actions"><label>切换架子<select id="rack-select" aria-label="切换房间和架子">${racks.map(r=>`<option value="${r.id}" ${r.id===selected?'selected':''}>${esc(r.room_name)} / ${esc(r.name)}</option>`).join("")}</select></label><button data-rack-edit>编辑架子</button><button data-rack-new>＋ 架子</button></div>
     </div>
-    <div class="rack-summary-strip"><div><b>8 × 9</b><span>72个固定笼位</span></div><div><b>${model.placed}<small>/72</small></b><span>已定位</span></div><div><b>${model.parked}</b><span>待定位 / 临时停放</span></div><div><b>${model.mouse_count}</b><span>当前在笼小鼠</span></div><div class="rack-save-state" role="status">● 已保存</div></div>
+    <div class="rack-summary-strip"><div><b>8 × 9</b><span>横8列 · 竖9行</span></div><div><b>${model.placed}<small>/72</small></b><span>已定位</span></div><div><b>${model.parked}</b><span>待定位 / 临时停放</span></div><div><b>${model.mouse_count}</b><span>当前在笼小鼠</span></div><div class="rack-save-state" role="status">● 已保存</div></div>
     <div class="rack-control-band"><div class="rack-control-left"><div class="rack-search-wrap"><span aria-hidden="true">⌕</span><input id="rack-search" type="search" placeholder="查找耳号、基因型、笼号" value="${esc(search)}" aria-label="查找笼卡"></div>
     <div class="rack-legend" aria-label="笼状态图例">${Object.entries(model.states).map(([k,v])=>`<span><i class="legend-dot state-${esc(k)}"></i>${esc(v)}</span>`).join("")}</div></div>
     ${window.ExperimentPlans.markup()}<div class="rack-view-controls"><label class="rack-zoom-label">显示<select id="rack-zoom"><option value="75" ${zoom==='75'?'selected':''}>75%</option><option value="100" ${zoom==='100'?'selected':''}>100%</option><option value="125" ${zoom==='125'?'selected':''}>125%</option><option value="fit" ${zoom==='fit'?'selected':''}>适应宽度</option></select></label><button id="rack-undo" ${model.undo_id&&!busy?'':'disabled'}>↶ 撤销移位</button></div></div>
-    <div class="rack-layout"><div class="rack-board-panel"><div class="rack-board-toolbar"><strong>真实架位</strong><span>上方为A行，左侧为第1列</span></div><div class="rack-board-scroll"><div class="rack-board-grid" role="grid" aria-label="8行9列真实架子" aria-rowcount="8" aria-colcount="9">${cells}</div></div><p class="rack-board-help">拖到空格定位 · 拖到笼卡交换 · 拖到右侧暂存</p></div>
+    <div class="rack-layout"><div class="rack-board-panel"><div class="rack-board-toolbar"><strong>真实架位</strong><span>上方为A行，左侧为第1列</span></div><div class="rack-board-scroll"><div class="rack-board-grid" role="grid" aria-label="横8列竖9行真实架子" aria-rowcount="${model.rack.rows}" aria-colcount="${model.rack.columns}">${cells}</div></div><p class="rack-board-help">拖到空格定位 · 拖到笼卡交换 · 拖到右侧暂存</p></div>
       <aside class="rack-parking-panel"><div class="rack-parking-title"><span class="rack-eyebrow">PARKING AREA</span><h2>待定位 / 临时停放 <small>${parked.length}</small></h2><p>架子放满时，可先把一笼拖到这里。刷新后仍会保留。</p></div><div class="rack-dropzone rack-parking" data-parking="true" aria-label="架旁临时停放区">${parked.map(card).join("")}<div class="rack-parking-placeholder">拖动笼卡到这里<br><small>尚无真实坐标的笼也会列在这里</small></div></div><button class="rack-new-parked" data-add-parking>＋ 新笼放到临时区</button></aside>
     </div>`;
     applyZoom();applySearch();bindDrag();window.ExperimentPlans.mount();
@@ -143,9 +143,28 @@ window.RackBoard=(()=>{
     catch(_error){/* save已回读并提示；拖动事件不会产生未处理Promise错误。 */}
   }
 
+  async function renameCage(cageId){
+    /* 只编辑笼号：使用稳定cage_id保存，鼠所属笼及实际坐标不会改变。 */
+    const c=await api(`/api/cages/${cageId}`);
+    openEditor('重命名笼',`${field('笼号','code','text',c.code,'required')}<p class="muted">修改显示的笼编号，原小鼠和笼位保留。</p>`,async form=>{
+      await api(`/api/cages/${cageId}`,{method:'PUT',body:{code:formData(form).code}});
+    });
+    const input=document.querySelector('#editor [name=code]');input.focus();input.select();
+  }
+
+  root.addEventListener('dblclick',event=>{
+    const name=event.target.closest('[data-rack-rename]');if(!name||busy)return;
+    event.preventDefault();renameCage(Number(name.dataset.rackRename)).catch(error=>notify(error.message,'error'));
+  });
+  root.addEventListener('keydown',event=>{
+    const name=event.target.closest('[data-rack-rename]');
+    if(!name||busy||!['Enter','F2'].includes(event.key))return;
+    event.preventDefault();renameCage(Number(name.dataset.rackRename)).catch(error=>notify(error.message,'error'));
+  });
+
   function moveMenu(cageId){
     const c=model.cards.find(x=>x.id===cageId);if(!c)return;
-    openEditor(`移动 ${c.code}`,`<p>当前位置：${address(c)}。目标已有笼卡时，两笼交换位置。</p><div class="form-grid"><label class="field"><span>行（从上到下）</span><select name="row">${[...letters].map((x,i)=>`<option value="${i+1}" ${c.row_index===i+1?'selected':''}>${x}</option>`).join("")}</select></label><label class="field"><span>列（从左到右）</span><select name="column">${Array.from({length:9},(_,i)=>`<option value="${i+1}" ${c.column_index===i+1?'selected':''}>${i+1}</option>`).join("")}</select></label><label class="full"><input type="checkbox" name="parking" ${c.row_index==null?'checked':''}> 移到架旁临时区</label></div>`,async form=>{
+    openEditor(`移动 ${c.code}`,`<p>当前位置：${address(c)}。目标已有笼卡时，两笼交换位置。</p><div class="form-grid"><label class="field"><span>行（从上到下）</span><select name="row">${[...letters].map((x,i)=>`<option value="${i+1}" ${c.row_index===i+1?'selected':''}>${x}</option>`).join("")}</select></label><label class="field"><span>列（从左到右）</span><select name="column">${Array.from({length:model.rack.columns},(_,i)=>`<option value="${i+1}" ${c.column_index===i+1?'selected':''}>${i+1}</option>`).join("")}</select></label><label class="full"><input type="checkbox" name="parking" ${c.row_index==null?'checked':''}> 移到架旁临时区</label></div>`,async form=>{
       const d=formData(form),parking=!!form.querySelector("[name=parking]").checked;
       await save(`/api/rack-layouts/${selected}/move`,{cage_id:cageId,row:parking?null:Number(d.row),column:parking?null:Number(d.column)},"笼位已保存");
     });
@@ -179,7 +198,7 @@ window.RackBoard=(()=>{
 
   function rackEditor(edit=false){
     const r=edit?model.rack:{};
-    openEditor(edit?"编辑真实架子":"新建真实架子",`<p class="muted">固定8行×9列，共72个真实笼位。新增架子后可切换查看。</p><div class="form-grid">${selectField("房间","room_id",options(state.refs.rooms,r.room_id||model?.rack.room_id,"— 请选择房间 —"))}${field("架子名称","name","text",r.name||"","required")}<label class="field full"><span>位置说明（如楼层、朝向）</span><textarea name="note">${esc(r.note||"")}</textarea></label></div>`,async form=>{
+    openEditor(edit?"编辑真实架子":"新建真实架子",`<p class="muted">固定横8列×竖9行，共72个真实笼位。新增架子后可切换查看。</p><div class="form-grid">${selectField("房间","room_id",options(state.refs.rooms,r.room_id||model?.rack.room_id,"— 请选择房间 —"))}${field("架子名称","name","text",r.name||"","required")}<label class="field full"><span>位置说明（如楼层、朝向）</span><textarea name="note">${esc(r.note||"")}</textarea></label></div>`,async form=>{
       const result=await api(edit?`/api/rack-layouts/${selected}`:"/api/rack-layouts",{method:edit?"PUT":"POST",body:formData(form)});
       selected=result.rack.id;localStorage.setItem("mousdb-rack-id",String(selected));
     });

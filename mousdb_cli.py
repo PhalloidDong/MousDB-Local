@@ -13,7 +13,7 @@ from rack_layout import RackLayoutStore
 from experiment_plans import PlanStore
 
 READ_ACTIONS={'mouse.list','mouse.get','cage.list','rack.list','rack.board','plan.list','references.list','mating.list'}
-ACTIONS=READ_ACTIONS|{'mouse.create','mouse.update','cage.create','cage.update','rack.create','rack.move','rack.undo',
+ACTIONS=READ_ACTIONS|{'mouse.create','mouse.update','cage.create','cage.update','cage.delete','rack.create','rack.move','rack.undo',
                     'plan.create','plan.update','reference.create','reference.update','mating.create','litter.create','litter.wean','event.create'}
 
 def mouse_id(db,params):
@@ -34,6 +34,7 @@ def dispatch(db,request):
     if action=='mouse.update':return db.update_mouse(mouse_id(db,params),payload)
     if action=='cage.list':return db.list_cages()
     if action=='cage.create':return db.create_cage(payload)
+    if action=='cage.delete':return db.delete_cage(int(params['cage_id']))
     if action=='cage.update':return db.update_cage(int(params['cage_id']),payload)
     if action=='rack.list':return RackLayoutStore(db).list_racks()
     if action=='rack.create':return RackLayoutStore(db).save_rack(payload)

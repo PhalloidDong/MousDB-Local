@@ -32,7 +32,7 @@ python mousdb_cli.py apply --file /path/to/private-request.json
 | 目标 | 动作 |
 | --- | --- |
 | 小鼠 | `mouse.list`、`mouse.get`、`mouse.create`、`mouse.update` |
-| 笼 | `cage.list`、`cage.create`、`cage.update` |
+| 笼 | `cage.list`、`cage.create`、`cage.update`、`cage.delete`（仅空笼） |
 | 架子 | `rack.list`、`rack.board`、`rack.create`、`rack.move`、`rack.undo` |
 | 实验计划 | `plan.list`、`plan.create`、`plan.update` |
 | 字典 | `references.list`、`reference.create`、`reference.update` |
