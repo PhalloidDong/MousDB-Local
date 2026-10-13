@@ -43,7 +43,7 @@ def start(open_browser=True):
                     if info and info.get('database_id')==str(database.resolve()):port=candidate
                 except (ValueError,KeyError,OSError):pass
             if port is None:
-                env={**os.environ,'MOUSDB_DB_PATH':str(database),'MOUSDB_DATA_DIR':str(data_dir),'MOUSDB_NO_BROWSER':'1'}
+                env={**os.environ,'MOUSDB_DB_PATH':str(database),'MOUSDB_DATA_DIR':str(data_dir),'MOUSDB_NO_BROWSER':'1','PYTHONUTF8':'1'}
                 python=Path(sys.executable)
                 if sys.platform=='win32' and python.with_name('pythonw.exe').exists():python=python.with_name('pythonw.exe')
                 options={'creationflags':subprocess.CREATE_NO_WINDOW} if sys.platform=='win32' else {'start_new_session':True}
@@ -60,7 +60,13 @@ def start(open_browser=True):
                             if info and info.get('database_id')==str(database.resolve()):port=candidate;break
                         except (ValueError,KeyError,OSError):pass
                     time.sleep(.3)
-                if port is None:raise RuntimeError('启动超时，请查看本地数据目录中的service-error.log')
+                if port is None:
+                    diagnostic={'state_exists':state.exists(),'state':state.read_text(encoding='utf-8') if state.exists() else '',
+                                'expected_database':str(database.resolve()),'process_alive':child.poll() is None}
+                    if state.exists():
+                        try:diagnostic['health']=health(int(json.loads(state.read_text(encoding='utf-8'))['port']))
+                        except Exception:pass
+                    raise RuntimeError('启动超时：'+json.dumps(diagnostic,ensure_ascii=False))
         finally:lock.unlink(missing_ok=True)
     url=f'http://127.0.0.1:{port}/'
     if open_browser:webbrowser.open(url,new=2)

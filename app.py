@@ -202,6 +202,9 @@ def create_server(port: int | None = None) -> ThreadingHTTPServer:
 
 
 def main() -> None:
+    # 后台日志固定UTF-8，英语Windows/macOS地区设置不能影响中文启动信息。
+    for stream in (sys.stdout,sys.stderr):
+        if stream is not None:stream.reconfigure(encoding="utf-8",errors="backslashreplace")
     if sys.version_info < (3,10):
         print("MousDB Local 需要 Python 3.10 或更高版本。")
         input("按 Enter 退出……"); raise SystemExit(2)
