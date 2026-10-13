@@ -1,0 +1,8 @@
+{
+  "action": "mouse.create",
+  "payload": {
+    "ear_tag": "DEMO-001",
+    "sex": "M",
+    "comment": "仅展示请求格式，不是任何使用者的真实记录。"
+  }
+}

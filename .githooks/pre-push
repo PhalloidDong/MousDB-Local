@@ -1,0 +1,7 @@
+#!/bin/sh
+# 推送前检查全部提交历史；删除文件并不能消除Git历史中的私有数据。
+PY=$(git config --get mousdb.python || true)
+if [ -z "$PY" ]; then
+  if command -v python3 >/dev/null 2>&1; then PY=python3; else PY=python; fi
+fi
+exec "$PY" scripts/privacy_guard.py --history

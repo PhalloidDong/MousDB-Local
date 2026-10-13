@@ -1,0 +1,24 @@
+# 只在GitHub临时环境测试合成数据；不会连接用户本机数据库。
+name: Windows and macOS checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, macos-15-intel]
+        python: ['3.10', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Privacy guard
+        run: python scripts/privacy_guard.py
+      - name: Standard library tests
+        run: python -m unittest discover -s tests -v
+      - name: Syntax check
+        run: python -m compileall -q app.py db.py rack_layout.py experiment_plans.py runtime_paths.py launcher.py mousdb_cli.py install_desktop.py

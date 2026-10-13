@@ -1,0 +1,48 @@
+# Codex本地操作
+
+在Codex中打开源码目录，先读取AGENTS.md，定位Python和本机数据库。无需连接Google日历、OneNote或其他人的数据；这些服务不属于本项目的运行依赖。
+
+查看环境：
+
+```sh
+python mousdb_cli.py doctor
+```
+
+首次建立自己的空库：
+
+```sh
+python mousdb_cli.py init
+```
+
+查询小鼠：
+
+```sh
+python mousdb_cli.py mice --scope all
+python mousdb_cli.py mice --search DEMO-001
+```
+
+数据写入通过JSON请求文件进行，避免Windows命令行引号破坏中文或特殊符号。真实请求保存在本地数据目录或系统临时目录。不要将真实请求放在仓库中。合成格式示例见`examples/request_create_mouse.json`。
+
+```sh
+python mousdb_cli.py apply --file /path/to/private-request.json
+```
+
+请求结构为`action`、`params`、`payload`。支持的动作：
+
+| 目标 | 动作 |
+| --- | --- |
+| 小鼠 | `mouse.list`、`mouse.get`、`mouse.create`、`mouse.update` |
+| 笼 | `cage.list`、`cage.create`、`cage.update` |
+| 架子 | `rack.list`、`rack.board`、`rack.create`、`rack.move`、`rack.undo` |
+| 实验计划 | `plan.list`、`plan.create`、`plan.update` |
+| 字典 | `references.list`、`reference.create`、`reference.update` |
+| 繁育 | `mating.list`、`mating.create`、`litter.create`、`litter.wean` |
+| 实际操作 | `event.create` |
+
+小鼠定位可使用`params.mouse_id`或唯一的`params.ear_tag`。修改的实际字段放入`payload`。系统编号由后端产生且只读，不能用Codex绕过。
+
+整笼移动和撤销先用`rack.board`读取最新`revision`，再在payload中填写`expected_revision`，与网页一样检测并发变化。写入前会自动产生`backups/before_codex_*.sqlite3`。
+
+计划是将来要做的工作，实际事件是已经发生的操作，不能混淆。真实手术、取材、死亡信息必须依据使用者明确陈述。
+
+Codex可以总结本地记录并解释执行结果；禁止把输出粘贴到公开GitHub记录。

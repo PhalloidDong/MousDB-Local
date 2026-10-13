@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>MousDB Local v1.5.1</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/rack.css">
+  <link rel="stylesheet" href="/plans.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-mark">M</span><div><strong>MousDB Local</strong><small>v1.5.1 · 本机数据库</small></div></div>
+    <nav id="navigation" aria-label="主导航">
+      <button data-page="rack" class="active">架子首页</button>
+      <button data-page="dashboard">概览</button>
+      <button data-page="mice">小鼠信息</button>
+      <button data-page="dead">死亡小鼠</button>
+      <button data-page="cages">房间与笼位</button>
+      <button data-page="breeding">繁育管理</button>
+      <button data-page="import">批量导入</button>
+      <button data-page="settings">品系和备份</button>
+    </nav>
+    <div class="local-note">仅监听 127.0.0.1<br>数据不会上传互联网</div>
+  </aside>
+
+  <main>
+    <header class="topbar"><div><h1 id="page-title">动物房架位</h1><p id="page-subtitle">与真实笼位一一对应</p></div><button id="refresh" class="ghost">刷新</button></header>
+    <div id="notice" role="status" aria-live="polite"></div>
+
+    <section id="page-rack" class="page active"><div id="rack-home" aria-live="polite">正在载入架子……</div></section>
+
+    <section id="page-dashboard" class="page">
+      <div id="metrics" class="metrics loading">正在载入摘要……</div>
+      <div class="quick-actions">
+        <button data-action="new-mouse" class="primary">＋ 录入单鼠</button>
+        <button data-page="import">批量导入</button><button data-page="breeding">建立繁育</button>
+      </div>
+      <div class="two-column"><article class="panel"><h2>待离乳窝次</h2><div id="pending-litters" class="empty">正在载入……</div></article>
+      <article class="panel"><h2>最近操作</h2><div id="recent-audit" class="empty">正在载入……</div></article></div>
+    </section>
+
+    <section id="page-mice" class="page">
+      <div class="toolbar"><input id="mouse-search" type="search" placeholder="编号、耳标、品系、负责人、项目……"><select id="mouse-strain-filter"></select><select id="mouse-line-filter"></select><select id="mouse-status-filter"><option value="">全部非死亡状态</option><option>Active</option><option>Experimental</option><option>Transferred</option></select><button data-action="new-mouse" class="primary">＋ 录入小鼠</button></div>
+      <div id="mice-table" class="table-wrap loading">正在载入小鼠……</div>
+    </section>
+
+    <section id="page-dead" class="page">
+      <div class="toolbar"><input id="dead-search" type="search" placeholder="搜索死亡记录……"><select id="dead-strain-filter"></select><select id="dead-line-filter"></select><a class="button" href="/api/export/mice.csv?scope=dead">导出死亡小鼠 CSV</a></div>
+      <div id="dead-table" class="table-wrap loading">正在载入死亡记录……</div>
+    </section>
+
+    <section id="page-cages" class="page">
+      <div class="toolbar"><button data-action="new-room">＋ Room</button><button data-action="new-rack">＋ Rack</button><button data-action="new-cage" class="primary">＋ Cage（可同时录鼠）</button></div>
+      <div id="cage-grid" class="cage-grid loading">正在载入笼位……</div>
+    </section>
+
+    <section id="page-breeding" class="page">
+      <div class="toolbar"><button data-action="new-mating" class="primary">＋ 建立繁育</button></div><div id="mating-list" class="cards loading">正在载入繁育记录……</div>
+    </section>
+
+    <section id="page-import" class="page">
+      <article class="panel prose"><h2>CSV 两步导入</h2><p>先选择文件预检。预计编号仅供核对，正式提交会在同一事务中重新安全编号；任意错误会使整批回滚。</p>
+        <div class="toolbar"><input id="csv-file" type="file" accept=".csv,text/csv"><label><input id="auto-create" type="checkbox"> 自动创建缺失字典与笼位</label><a class="button" href="/api/import/template">下载模板</a><button id="preview-import" class="primary">预检</button></div>
+        <div id="import-result" class="empty">尚未选择 CSV</div><button id="commit-import" class="success hidden">确认整批导入</button>
+      </article>
+    </section>
+
+    <section id="page-settings" class="page">
+      <div class="two-column"><article class="panel"><h2>受控字典</h2><p class="muted">可新增、编辑或停用；停用不会破坏历史记录。</p><div id="reference-list"></div></article>
+      <article class="panel"><h2>导出与备份</h2><div class="stack"><a class="button" href="/api/export/mice.csv?scope=all">导出全部小鼠</a><a class="button" href="/api/export/mice.csv?scope=alive">导出非死亡小鼠</a><a class="button" href="/api/backup/download">下载一致性数据库备份</a></div><p class="warning-text">备份下载时也会在 data/backups 留存一份时间戳副本。</p></article></div>
+    </section>
+  </main>
+
+  <dialog id="editor"><form id="editor-form"><button type="button" class="dialog-close" aria-label="关闭">×</button><h2 id="editor-title"></h2><div id="editor-body"></div><div class="dialog-actions"><button type="button" class="cancel">取消</button><button type="submit" class="primary">保存</button></div></form></dialog>
+  <dialog id="detail"><button type="button" class="dialog-close" aria-label="关闭">×</button><div id="detail-body"></div><div class="dialog-actions"><button type="button" class="cancel">关闭</button></div></dialog>
+  <dialog id="plan-dialog"><button type="button" class="dialog-close" aria-label="关闭">×</button><h2>实验计划</h2><div id="plan-dialog-content"></div><div class="dialog-actions"><button type="button" class="cancel">关闭</button></div></dialog>
+  <script src="/vendor/sortable-1.15.7.min.js" defer></script>
+  <script src="/app.js" defer></script>
+  <script src="/plans.js" defer></script>
+  <script src="/rack.js" defer></script>
+</body>
+</html>
