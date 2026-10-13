@@ -5,7 +5,7 @@
 计划和实际操作分开保存；模糊时间、预留用途不猜日期，不自动记为给药或取材。
 """
 from __future__ import annotations
-import re
+import json,re
 from datetime import date, timedelta
 from db import ValidationError, now_text, parse_date
 
@@ -32,6 +32,17 @@ class PlanStore:
                 mouse_id INTEGER NOT NULL REFERENCES mice(id) ON DELETE RESTRICT,
                 PRIMARY KEY(plan_id,mouse_id))''')
             c.execute('CREATE INDEX IF NOT EXISTS idx_plans_due ON experiment_plans(status,plan_date)')
+            # 一个批次可以对应多条旧备注来源；独立保存来源，刷新不能再造单鼠任务。
+            c.execute("""CREATE TABLE IF NOT EXISTS experiment_plan_sources(
+                source_key TEXT PRIMARY KEY,plan_id INTEGER NOT NULL
+                REFERENCES experiment_plans(id) ON DELETE CASCADE)""")
+            # 合并前的完整计划和鼠关联归档；旧ID仍能定位到当前批次，科研历史可回查。
+            c.execute("""CREATE TABLE IF NOT EXISTS experiment_plan_merges(
+                old_plan_id INTEGER PRIMARY KEY,plan_id INTEGER NOT NULL
+                REFERENCES experiment_plans(id) ON DELETE RESTRICT,
+                snapshot_json TEXT NOT NULL,merged_at TEXT NOT NULL)""")
+            for old in c.execute("SELECT id,source_key FROM experiment_plans WHERE source IN ('comment','event') AND source_key IS NOT NULL").fetchall():
+                c.execute('INSERT OR IGNORE INTO experiment_plan_sources VALUES(?,?)',(old['source_key'],old['id']))
             self._sync(c)
 
     @staticmethod
@@ -57,6 +68,7 @@ class PlanStore:
         def add(key,title,kind,day,details,mouse_id,source='comment',time=''):
             try: day=parse_date(day,'计划日期',required=True)
             except ValidationError: return
+            if time:key+=':'+time  # 同一只鼠同一天不同给药时刻需要保留为两次操作。
             candidates[key]=dict(source_key=key,title=title,plan_type=kind,plan_date=day,
                                  plan_time=time,details=details,mouse_ids=[mouse_id],source=source)
         for m in c.execute('SELECT id,comment FROM mice'):
@@ -90,38 +102,145 @@ class PlanStore:
             add(f"event:{e['id']}",e['title'],kind,e['event_date'],e['details'],e['mouse_id'],'event')
         return candidates
 
-    def _sync(self,c):
-        """把备注计划幂等同步；用户修改过的计划优先，避免刷新撤销用户编辑。
+    @staticmethod
+    def _batch_key(p,has_mice=True):
+        """同一日期、时刻和动作是一场操作，完成状态另由调用方匹配。
 
-        同日同鼠同类型且标题明确已完成的实际事件，作为完成依据。
-        删除/改期的备注对应旧未完成任务自动取消；旧完成事实仍保留。
+        取材/给药/配鼠/检栓/成像有明确动作类型，多只鼠共用一个批次。
+        “实验”“样本处理”“其他”仍按具体标题区分动作；无关联鼠的实验室任务也保留标题。
+        空时刻表示当天未指定时刻，与10:00等明确时刻分开，不推定它们同时进行。
+        """
+        common={'取材','注射Tam','注射Bleo','配鼠','检栓','成像'}
+        action=p['plan_type'] if has_mice and p['plan_type'] in common else p['title'].strip()
+        return p['plan_date'],p['plan_time'],p['plan_type'],action
+
+    def _details(self,c,items):
+        """按原标题/备注汇总，并标注对应耳号；不同剂量、组别等细节不丢失。
+
+        输入为待合并任务及mouse_ids，输出单个批次的备注。相同文字仅保留一份，
+        不把多个小鼠重复的同一段说明堆叠十次。
+        """
+        if len(items)==1:return items[0]['details']
+        blocks={}
+        for p in items:
+            key=p['title'],p['details']
+            blocks.setdefault(key,[])
+            for mid in p['mouse_ids']:
+                if mid not in blocks[key]:blocks[key].append(mid)
+        parts=[]
+        for (title,details),mids in blocks.items():
+            labels=[]
+            for mid in mids:
+                m=c.execute('SELECT ear_tag,code FROM mice WHERE id=?',(mid,)).fetchone()
+                labels.append(m['ear_tag'] or m['code'])
+            header=title+('｜耳号：'+'、'.join(labels) if labels else '')
+            parts.append(header+('\n'+details if details else ''))
+        return '\n\n'.join(parts)
+
+    @staticmethod
+    def _next_id(c):
+        """新计划避开已归档的旧ID，旧网页链接不会被误解析为另一场实验。"""
+        return c.execute('SELECT COALESCE(MAX(id),0)+1 FROM (SELECT id FROM experiment_plans UNION ALL SELECT old_plan_id AS id FROM experiment_plan_merges)').fetchone()[0]
+
+    def _resolve_id(self,c,plan_id):
+        """旧单鼠计划ID解析到合并后的批次ID，避免已打开的网页编辑失效。"""
+        merged=c.execute('SELECT plan_id FROM experiment_plan_merges WHERE old_plan_id=?',(plan_id,)).fetchone()
+        return merged['plan_id'] if merged else plan_id
+
+    def _archive_merge(self,c,old,target):
+        """先归档再合并；只删除冗余计划行，不删除小鼠、实际事件和原始备注。"""
+        snapshot=dict(old)
+        snapshot['mouse_ids']=[r[0] for r in c.execute('SELECT mouse_id FROM experiment_plan_mice WHERE plan_id=?',(old['id'],))]
+        # 当前批次再次被合并时，所有旧ID直接指向最终目标，不产生失效的跳转链。
+        c.execute('UPDATE experiment_plan_merges SET plan_id=? WHERE plan_id=?',(target,old['id']))
+        c.execute('UPDATE experiment_plan_sources SET plan_id=? WHERE plan_id=?',(target,old['id']))
+        c.execute('INSERT INTO experiment_plan_merges VALUES(?,?,?,?)',
+                  (old['id'],target,json.dumps(snapshot,ensure_ascii=False),now_text()))
+        c.execute('DELETE FROM experiment_plans WHERE id=?',(old['id'],))
+        self.db.audit(c,'merge','experiment_plan',target,'合并原计划ID='+str(old['id']))
+
+    def _merge_matching(self,c):
+        """手工录入和自动导入共用批次规则；同时间的鼠在一个计划中统一编辑。
+
+        已完成/待执行/已取消分开，避免部分小鼠的完成事实被应用到其他小鼠。
+        用户编辑过的批次继续优先于原备注自动同步。
+        """
+        groups={}
+        for row in c.execute('SELECT * FROM experiment_plans ORDER BY id'):
+            p=dict(row);p['mouse_ids']=[r[0] for r in c.execute('SELECT mouse_id FROM experiment_plan_mice WHERE plan_id=?',(p['id'],))]
+            key=self._batch_key(p,bool(p['mouse_ids'])),p['status']
+            groups.setdefault(key,[]).append(p)
+        for items in groups.values():
+            if len(items)<2:continue
+            root=items[0];mids=sorted({mid for p in items for mid in p['mouse_ids']})
+            title=root['title'] if len({p['title'] for p in items})==1 else root['plan_type']
+            source='user' if any(p['source']=='user' for p in items) else root['source']
+            c.execute('UPDATE experiment_plans SET title=?,details=?,source=?,updated_at=? WHERE id=?',
+                      (title,self._details(c,items),source,now_text(),root['id']))
+            for mid in mids:c.execute('INSERT OR IGNORE INTO experiment_plan_mice VALUES(?,?)',(root['id'],mid))
+            for old in items[1:]:self._archive_merge(c,old,root['id'])
+
+    def _sync(self,c):
+        """把逐鼠备注先归并为批次，再同步单条计划及全体鼠关联。
+
+        来源映射保留每条原备注的身份；用户手工改期/取消/完成后整批以用户记录为准。
+        自动来源增加或删除鼠时按当前备注重算；实际完成仍逐鼠判断，再分配完成状态。
         """
         candidates=self._candidates(c);stamp=now_text()
         completed={(e['mouse_id'],e['event_date'],self.classify(e['title']))
                    for e in c.execute('SELECT * FROM mouse_events')
                    if re.search(r'已完成',e['title']) and not e['title'].startswith('计划已完成：')}
+        old_rows={p['id']:dict(p) for p in c.execute('SELECT * FROM experiment_plans')}
+        aliases={r['source_key']:r['plan_id'] for r in c.execute('SELECT * FROM experiment_plan_sources')}
+        groups={}
         for key,p in candidates.items():
-            old=c.execute('SELECT * FROM experiment_plans WHERE source_key=?',(key,)).fetchone()
+            # 兼容旧版来源键未包含时刻的记录；只有原计划时刻一致才复用旧映射。
+            if p['plan_time'] and key not in aliases:
+                legacy=key[:-6];old_pid=aliases.get(legacy)
+                if old_pid in old_rows and old_rows[old_pid]['plan_time']==p['plan_time']:
+                    aliases[key]=old_pid
+                    c.execute('INSERT OR IGNORE INTO experiment_plan_sources VALUES(?,?)',(key,old_pid))
+            old=old_rows.get(aliases.get(key))
+            if old and old['source']=='user':continue
             done=all((mid,p['plan_date'],p['plan_type']) in completed for mid in p['mouse_ids'])
-            if old:
-                if old['source']=='user': continue
-                # 用户没有手工覆盖时，备注中的标题/时间/详情修订同步到原任务。
-                # source=user的记录已在上面跳过，人工改期或取消不会被此逻辑撤销。
-                status='completed' if done else 'pending' if old['status']=='cancelled' else old['status']
-                finished=p['plan_date'] if done else old['completion_date']
-                if (old['title'],old['plan_time'],old['details'],old['status'])!=(p['title'],p['plan_time'],p['details'],status):
-                    c.execute("UPDATE experiment_plans SET title=?,plan_time=?,details=?,status=?,completion_date=?,updated_at=? WHERE id=?",
-                              (p['title'],p['plan_time'],p['details'],status,finished,stamp,old['id']))
-                continue
-            cur=c.execute('''INSERT INTO experiment_plans(title,plan_type,plan_date,plan_time,details,
-                status,source,source_key,created_at,updated_at,completion_date) VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
-                (p['title'],p['plan_type'],p['plan_date'],p['plan_time'],p['details'],
-                 'completed' if done else 'pending',p['source'],key,stamp,stamp,p['plan_date'] if done else None))
-            for mid in p['mouse_ids']:
-                c.execute('INSERT INTO experiment_plan_mice(plan_id,mouse_id) VALUES(?,?)',(cur.lastrowid,mid))
-        for old in c.execute("SELECT id,source_key FROM experiment_plans WHERE source IN ('comment','event') AND status='pending'").fetchall():
-            if old['source_key'] not in candidates:
-                c.execute("UPDATE experiment_plans SET status='cancelled',updated_at=? WHERE id=?",(stamp,old['id']))
+            status='completed' if done or old and old['status']=='completed' else 'pending'
+            group_key=self._batch_key(p),status
+            groups.setdefault(group_key,[]).append(p)
+        used=set();assigned={}
+        # 先处理待执行批次，保留其ID；部分鼠已实际完成时单独保存完成事实。
+        for (key,status),items in sorted(groups.items(),key=lambda x:(x[0][0],x[0][1]!='pending')):
+            mids=sorted({mid for p in items for mid in p['mouse_ids']})
+            existing=sorted({aliases[p['source_key']] for p in items if p['source_key'] in aliases})
+            eligible=[pid for pid in existing if pid not in used and old_rows[pid]['source']!='user'
+                      and old_rows[pid]['status']==status and self._batch_key(old_rows[pid])==key]
+            pid=eligible[0] if eligible else None
+            first=items[0];title=first['title'] if len({p['title'] for p in items})==1 else first['plan_type']
+            details=self._details(c,items);finished=first['plan_date'] if status=='completed' else None
+            if pid:
+                old=old_rows[pid]
+                previous=[r[0] for r in c.execute('SELECT mouse_id FROM experiment_plan_mice WHERE plan_id=? ORDER BY mouse_id',(pid,))]
+                if (old['title'],old['details'],old['status'],previous)!=(title,details,status,mids):
+                    c.execute('UPDATE experiment_plans SET title=?,details=?,status=?,completion_date=?,updated_at=? WHERE id=?',
+                              (title,details,status,finished,stamp,pid))
+                    c.execute('DELETE FROM experiment_plan_mice WHERE plan_id=?',(pid,))
+            else:
+                pid=c.execute("""INSERT INTO experiment_plans(id,title,plan_type,plan_date,plan_time,details,status,
+                    source,created_at,updated_at,completion_date) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                    (self._next_id(c),title,first['plan_type'],first['plan_date'],first['plan_time'],details,status,first['source'],stamp,stamp,finished)).lastrowid
+            used.add(pid)
+            for mid in mids:c.execute('INSERT OR IGNORE INTO experiment_plan_mice VALUES(?,?)',(pid,mid))
+            for p in items:
+                assigned[p['source_key']]=pid
+                c.execute('INSERT OR REPLACE INTO experiment_plan_sources VALUES(?,?)',(p['source_key'],pid))
+        for pid,old in old_rows.items():
+            if old['source']=='user' or pid in used:continue
+            original_keys=[k for k,v in aliases.items() if v==pid]
+            remaining=c.execute('SELECT source_key FROM experiment_plan_sources WHERE plan_id=?',(pid,)).fetchall()
+            targets=[assigned[k] for k in original_keys if k in assigned]
+            if targets and not remaining:self._archive_merge(c,old,targets[0])
+            elif old['status']=='pending' and not any(r['source_key'] in candidates for r in remaining):
+                c.execute("UPDATE experiment_plans SET status='cancelled',updated_at=? WHERE id=?",(stamp,pid))
+        self._merge_matching(c)
 
     def _rows(self,c):
         """地点按当前笼位读取；转笼后提醒也随实际位置更新。"""
@@ -148,17 +267,11 @@ class PlanStore:
         多只小鼠的给药不会产生10张重复提醒卡。
         """
         today=today or date.today();tomorrow=today+timedelta(days=1)
-        data=self.list();groups={}
+        data=self.list();items=[]
         for p in data['plans']:
-            if p['status']!='pending' or p['plan_date'] not in (str(today),str(tomorrow)): continue
-            # 手工任务彼此独立；自动导入的同批次任务才合并。
-            key=(p['plan_date'],p['plan_time'],p['plan_type'],p['title'],p['id'] if p['source']=='user' else 'auto')
-            if key not in groups:
-                groups[key]={**p,'ids':[],'mice':[],'when':'today' if p['plan_date']==str(today) else 'tomorrow'}
-            groups[key]['ids'].append(p['id'])
-            for m in p['mice']:
-                if not any(x['id']==m['id'] for x in groups[key]['mice']):groups[key]['mice'].append(m)
-        return {'today':str(today),'tomorrow':str(tomorrow),'items':list(groups.values())}
+            if p['status']=='pending' and p['plan_date'] in (str(today),str(tomorrow)):
+                items.append({**p,'ids':[p['id']],'when':'today' if p['plan_date']==str(today) else 'tomorrow'})
+        return {'today':str(today),'tomorrow':str(tomorrow),'items':items}
 
     def _mouse_ids(self,c,payload,old_ids):
         if 'mouse_ids' in payload:
@@ -181,6 +294,8 @@ class PlanStore:
     def save(self,payload,plan_id=None):
         """保存明确日期的任务；完成标记只写计划日志，不虚构体重或注射实测值。"""
         with self.db.write() as c:
+            self._sync(c)
+            if plan_id:plan_id=self._resolve_id(c,plan_id)
             old=c.execute('SELECT * FROM experiment_plans WHERE id=?',(plan_id,)).fetchone() if plan_id else None
             if plan_id and not old:raise ValidationError('计划不存在')
             merged={**(dict(old) if old else {}),**payload}
@@ -201,12 +316,14 @@ class PlanStore:
                     (title,kind,day,time,details,status,stamp,finished,plan_id))
                 c.execute('DELETE FROM experiment_plan_mice WHERE plan_id=?',(plan_id,))
             else:
-                plan_id=c.execute('''INSERT INTO experiment_plans(title,plan_type,plan_date,plan_time,details,status,
-                    source,created_at,updated_at,completion_date) VALUES(?,?,?,?,?,?,'user',?,?,?)''',
-                    (title,kind,day,time,details,status,stamp,stamp,finished)).lastrowid
+                plan_id=c.execute('''INSERT INTO experiment_plans(id,title,plan_type,plan_date,plan_time,details,status,
+                    source,created_at,updated_at,completion_date) VALUES(?,?,?,?,?,?,?,'user',?,?,?)''',
+                    (self._next_id(c),title,kind,day,time,details,status,stamp,stamp,finished)).lastrowid
             for mid in mids:c.execute('INSERT INTO experiment_plan_mice(plan_id,mouse_id) VALUES(?,?)',(plan_id,mid))
             if status=='completed' and (not old or old['status']!='completed'):
                 for mid in mids:
                     self.db.audit(c,'plan_completed','mouse',mid,'已确认完成计划：'+title+'；计划ID='+str(plan_id))
             self.db.audit(c,'update' if old else 'create','experiment_plan',plan_id,title+'；'+day+'；'+status)
+            self._merge_matching(c)
+            plan_id=self._resolve_id(c,plan_id)
             return next(p for p in self._rows(c) if p['id']==plan_id)

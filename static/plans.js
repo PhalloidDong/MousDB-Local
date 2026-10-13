@@ -27,7 +27,7 @@ window.ExperimentPlans=(()=>{
       // 数据没变时保留DOM和键盘焦点；跨日或计划变更才替换卡片。
       if(signature!==lastSignature||!box.dataset.ready){
         lastSignature=signature;box.dataset.ready='1';
-        box.querySelector('.plan-reminder-items').innerHTML=data.items.length?data.items.map(p=>`<button type="button" class="plan-reminder-item ${p.when}" data-plan-view="${p.ids.join(',')}" title="${esc(p.title+'；'+ears(p))}"><span class="plan-day">${p.when==='today'?'今天':'明天'}${p.plan_time?' '+esc(p.plan_time):''}</span><span class="plan-item-content"><b>${esc(p.title)}</b><small>${esc(ears(p)||'样本 / 实验室任务')}</small></span></button>`).join(''):'<p class="plan-empty">今天和明天暂无待执行计划</p>';
+        box.querySelector('.plan-reminder-items').innerHTML=data.items.length?data.items.map(p=>`<button type="button" class="plan-reminder-item ${p.when}" data-plan-view="${p.ids.join(',')}" title="${esc(p.title+'；'+ears(p))}"><span class="plan-day">${p.when==='today'?'今天':'明天'}${p.plan_time?' '+esc(p.plan_time):''}</span><span class="plan-item-content"><b>${esc(p.title)}</b><small>${esc(ears(p)||'样本 / 实验室任务')}${p.mice.length?' · '+p.mice.length+'只':''}</small></span></button>`).join(''):'<p class="plan-empty">今天和明天暂无待执行计划</p>';
         const todayCount=data.items.filter(p=>p.when==='today').length,tomorrowCount=data.items.length-todayCount;
         box.querySelector('strong').textContent=data.items.length?`实验提醒 · 今天${todayCount} / 明天${tomorrowCount}`:'实验提醒';
         box.classList.toggle('has-due-plans',!!data.items.length);
@@ -59,15 +59,16 @@ window.ExperimentPlans=(()=>{
   function renderList(ids){
     const filter=document.getElementById('plan-status-filter').value;
     const rows=all.filter(p=>(filter==='all'||p.status===filter)&&(!ids||ids.includes(p.id)));
-    document.getElementById('plan-list-rows').innerHTML=rows.map(p=>`<article class="plan-list-row"><div class="plan-list-date"><b>${esc(p.plan_date)}</b><small>${esc(p.plan_time||'未指定时刻')}</small></div><div class="plan-list-content"><b>${esc(p.title)}</b><span class="plan-status">${statusNames[p.status]}</span><p>${esc(ears(p)||'样本 / 实验室任务')}</p>${locations(p)?`<small>${esc(locations(p))}</small>`:''}${p.details?`<details><summary>备注</summary><p>${esc(p.details)}</p></details>`:''}</div><div class="plan-row-actions"><button type="button" data-plan-edit="${p.id}">编辑</button>${p.status==='pending'?`<button type="button" data-plan-complete="${p.id}">已完成</button>`:''}</div></article>`).join('')||'<p class="plan-empty">没有符合条件的计划</p>';
+    document.getElementById('plan-list-rows').innerHTML=rows.map(p=>`<article class="plan-list-row"><div class="plan-list-date"><b>${esc(p.plan_date)}</b><small>${esc(p.plan_time||'未指定时刻')}</small></div><div class="plan-list-content"><b>${esc(p.title)}</b><span class="plan-status">${statusNames[p.status]}</span><p>${esc(ears(p)||'样本 / 实验室任务')}${p.mice.length?' · '+p.mice.length+'只':''}</p>${locations(p)?`<small>${esc(locations(p))}</small>`:''}${p.details?`<details><summary>备注</summary><p>${esc(p.details)}</p></details>`:''}</div><div class="plan-row-actions"><button type="button" data-plan-edit="${p.id}">编辑</button>${p.status==='pending'?`<button type="button" data-plan-complete="${p.id}">已完成</button>`:''}</div></article>`).join('')||'<p class="plan-empty">没有符合条件的计划</p>';
   }
 
   async function form(mouse=null,plan=null){
-    /* 可按耳号关联一只或多只鼠；不填耳号则是全局样本/实验室任务。 */
+    /* 同一时间、同一操作填写全体耳号；后端自动并入同批计划，统一编辑和完成。
+     * 不填耳号则是具体的样本/实验室任务，按任务标题区分。 */
     document.getElementById('plan-dialog').close();
     if(!types.length)types=(await api('/api/plans')).types;
     const p=plan||{};
-    openEditor(p.id?'编辑实验计划':'新增实验计划',`<div class="form-grid">${field('任务标题','title','text',p.title||'','required')}${selectField('任务类型','plan_type',types.map(t=>`<option value="${esc(t)}" ${p.plan_type===t?'selected':''}>${esc(t)}</option>`).join(''))}${field('计划日期','plan_date','date',p.plan_date||localDay(),'required')}${field('时间（可空）','plan_time','time',p.plan_time||'')}${field('耳号（多只用顿号或逗号分隔）','ear_tags','text',p.id?ears(p):mouse?.ear_tag||'')}${selectField('执行状态','status',Object.entries(statusNames).map(([k,v])=>`<option value="${k}" ${(p.status||'pending')===k?'selected':''}>${v}</option>`).join(''))}<label class="field full"><span>计划备注</span><textarea name="details">${esc(p.details||'')}</textarea></label></div><p class="muted">填写明确日期后，前一天和当天会在架子首页提醒。完成操作后可标记为已完成。</p>`,async f=>{
+    openEditor(p.id?'编辑实验计划':'新增实验计划',`<div class="form-grid">${field('任务标题','title','text',p.title||'','required')}${selectField('任务类型','plan_type',types.map(t=>`<option value="${esc(t)}" ${p.plan_type===t?'selected':''}>${esc(t)}</option>`).join(''))}${field('计划日期','plan_date','date',p.plan_date||localDay(),'required')}${field('时间（可空）','plan_time','time',p.plan_time||'')}${field('耳号（多只用顿号或逗号分隔）','ear_tags','text',p.id?ears(p):mouse?.ear_tag||'')}${selectField('执行状态','status',Object.entries(statusNames).map(([k,v])=>`<option value="${k}" ${(p.status||'pending')===k?'selected':''}>${v}</option>`).join(''))}<label class="field full"><span>计划备注</span><textarea name="details">${esc(p.details||'')}</textarea></label></div><p class="muted">同一日期、时刻和操作的鼠共用一个计划，请填写全体耳号。前一天和当天会在首页提醒；标记完成会应用于本批全部小鼠。</p>`,async f=>{
       const payload=formData(f);
       // 从无耳号档案进入时使用可靠的内部ID；避免把空耳号当作无关联任务。
       if(mouse&&!payload.ear_tags){payload.mouse_ids=[mouse.id];delete payload.ear_tags;}
