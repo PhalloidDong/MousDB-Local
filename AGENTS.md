@@ -8,7 +8,8 @@
 2. 运行`python mousdb_cli.py doctor`确定实际数据目录。默认数据库在用户目录、仓库外。
 3. 首次使用运行`python mousdb_cli.py init`建立空库。现有用户若提供数据库路径，只写入被忽略的`.mousdb-local.json`或设置`MOUSDB_DB_PATH`；不复制到仓库。
 4. 运行`python launcher.py`。运行`python install_desktop.py`创建当前电脑的桌面入口。
-5. Git克隆用户运行`python scripts/enable_hooks.py`启用提交及推送数据检查。
+5. 更新后运行`python launcher.py --restart`，需要停止时使用`--stop`；只停止核对过PID和数据库标识的本机服务。
+6. Git克隆用户运行`python scripts/enable_hooks.py`启用提交及推送数据检查。
 
 ## 用户鼠操作
 

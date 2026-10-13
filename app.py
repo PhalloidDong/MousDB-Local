@@ -82,7 +82,7 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path); path = parsed.path; query = parse_qs(parsed.query)
             if path == "/api/health":
-                return self._json(200, {"status": "ok", "version": "1.5.1", "schema": DB.integrity_check(), "database_id": str(DB_PATH.resolve())})
+                return self._json(200, {"status": "ok", "version": "1.5.1", "schema": DB.integrity_check(), "database_id": str(DB_PATH.resolve()), "process_id": os.getpid()})
             if path == "/api/bootstrap":
                 return self._json(200, {"references": DB.list_references(), "next_code": DB.next_code()})
             # 明确排程独立保存；站内提醒只显示今天/明天的未完成计划。

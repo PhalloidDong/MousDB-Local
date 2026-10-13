@@ -2,7 +2,7 @@
 输入：本地数据库配置及--check/--no-browser选项；输出：后台服务和浏览器首页。
 锁文件及启动日志位于私有数据目录，不进入仓库；已有服务直接复用。
 """
-import argparse,json,os,socket,subprocess,sys,time,urllib.request,webbrowser
+import argparse,json,os,signal,socket,subprocess,sys,time,urllib.request,webbrowser
 from pathlib import Path
 from runtime_paths import ROOT,storage_paths
 
@@ -63,11 +63,34 @@ def start(open_browser=True):
     if open_browser:webbrowser.open(url,new=2)
     return url
 
+def stop():
+    """只停止配置指向且PID经健康接口核对的MousDB进程，不删除任何数据。"""
+    data_dir,database=storage_paths();state=data_dir/'service.json'
+    if not state.exists():return False
+    value=json.loads(state.read_text(encoding='utf-8'));info=health(int(value['port']))
+    if not info:
+        state.unlink(missing_ok=True);return False
+    if info.get('database_id')!=str(database.resolve()) or info.get('process_id')!=value['pid']:
+        raise RuntimeError('服务标识不一致，拒绝停止其他进程')
+    os.kill(int(value['pid']),signal.SIGTERM)
+    deadline=time.monotonic()+15
+    while health(int(value['port'])):
+        if time.monotonic()>deadline:raise RuntimeError('服务未停止，请核对本机进程')
+        time.sleep(.3)
+    state.unlink(missing_ok=True);return True
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description='后台启动本机MousDB')
     parser.add_argument('--check',action='store_true',help='启动/核对服务但不打开浏览器')
+    parser.add_argument('--stop',action='store_true',help='停止自己的后台服务，数据保留')
+    parser.add_argument('--restart',action='store_true',help='更新代码后重启自己的服务')
     args=parser.parse_args()
-    try:print(json.dumps({'ok':True,'url':start(not args.check)},ensure_ascii=False))
+    try:
+        if args.stop:result={'ok':True,'stopped':stop()}
+        else:
+            if args.restart:stop()
+            result={'ok':True,'url':start(not args.check)}
+        if sys.stdout is not None:print(json.dumps(result,ensure_ascii=False))
     except Exception as error:
         print(str(error),file=sys.stderr)
         if sys.platform=='win32' and 'pythonw' in Path(sys.executable).stem:

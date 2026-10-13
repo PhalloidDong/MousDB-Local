@@ -30,7 +30,7 @@ python3 launcher.py
 python3 install_desktop.py
 ```
 
-Windows命令可用`py -3`替代`python3`。安装器把启动入口放到当前用户桌面，路径适配自己的电脑。网站后台运行，关掉浏览器不会删除数据。
+Windows命令可用`py -3`替代`python3`。用`python launcher.py --stop`停止后台服务。安装器把启动入口放到当前用户桌面，路径适配自己的电脑。网站后台运行，关掉浏览器不会删除数据。
 
 ## 功能
 
@@ -65,7 +65,7 @@ Windows命令可用`py -3`替代`python3`。安装器把启动入口放到当前
 python scripts/enable_hooks.py
 ```
 
-更新前保存本地数据库备份，然后`git pull --ff-only`并重新启动网站。不要把数据库或导出文件加入提交。
+更新前保存本地数据库备份，然后`git pull --ff-only`，运行`python launcher.py --restart`重新启动网站。不要把数据库或导出文件加入提交。
 
 修改后运行测试、隐私检查，再提交/推送源码：
 

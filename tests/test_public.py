@@ -47,6 +47,20 @@ class PublicTests(unittest.TestCase):
         store=PlanStore(self.db);items=store.reminders(date(2026,11,1))['items']
         self.assertEqual(len(items),1);self.assertEqual(items[0]['when'],'tomorrow');self.assertEqual(items[0]['plan_time'],'10:00')
         store.save({'status':'completed'},items[0]['id']);self.assertFalse(store.reminders(date(2026,11,2))['items'])
+    def test_background_service_reuse_and_stop(self):
+        # 真正启动一个临时数据库服务，再重复启动及停止；不访问用户的实例。
+        env={**os.environ,'MOUSDB_DB_PATH':str(self.db.path),'MOUSDB_DATA_DIR':str(self.root)}
+        cmd=[sys.executable,str(ROOT/'launcher.py')]
+        try:
+            first=json.loads(subprocess.check_output(cmd+['--check'],env=env,encoding='utf-8'))
+            pid=json.loads((self.root/'service.json').read_text(encoding='utf-8'))['pid']
+            again=json.loads(subprocess.check_output(cmd+['--check'],env=env,encoding='utf-8'))
+            self.assertEqual(first['url'],again['url'])
+            self.assertEqual(pid,json.loads((self.root/'service.json').read_text(encoding='utf-8'))['pid'])
+        finally:
+            subprocess.run(cmd+['--stop'],env=env,check=True,stdout=subprocess.DEVNULL)
+        self.assertFalse((self.root/'service.json').exists())
+
     def test_privacy_rejects_private_files(self):
         for path,data in [('data/mice.sqlite3',b'anything'),('renamed.py',b'SQLite format 3\x00'),('export.csv',b'rows'),('private.json',b'{}'),('token.py',('ghp_'+'x'*30).encode())]:
             self.assertIsNotNone(privacy.inspect(path,data))
