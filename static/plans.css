@@ -23,12 +23,19 @@
 .plan-empty{font-size:11px;color:#7E8E84;margin:8px 0;line-height:1.5}
 .has-due-plans{animation:plan-arrive .35s ease-out}
 @keyframes plan-arrive{from{background:#E5EFE8}to{background:#FDFEFC}}
-#plan-dialog{width:min(940px,95vw)}.plan-list-toolbar{display:flex;gap:10px;margin:15px 0}.plan-list-toolbar select,.plan-list-toolbar button{font-size:12px;padding:7px 11px}
-#plan-list-rows{max-height:60vh;overflow:auto}
+/* 计划弹窗直接包含标题/列表，没有editor的form包裹，所以单独提供内边距。
+ * 左右28px对齐标题、筛选栏与列表；上下24px让关闭按钮和内容都不贴外边缘。
+ * 窄屏另缩为18px，保持阅读空间；只改显示，不改变计划或鼠记录。 */
+#plan-dialog{width:min(940px,calc(100vw - 32px));padding:24px 28px}
+#plan-dialog>h2{margin:0 40px 0 0}
+#plan-dialog>.dialog-close{top:14px;right:18px}
+.plan-list-toolbar{display:flex;gap:10px;margin:15px 0}.plan-list-toolbar select,.plan-list-toolbar button{font-size:12px;padding:7px 11px}
+/* 低窗口也预留标题、筛选和底部按钮的高度，滚动发生在计划列表内。 */
+#plan-list-rows{max-height:min(60vh,calc(90vh - 220px));overflow:auto;padding-right:8px;scrollbar-gutter:stable}
 .plan-list-row{display:flex;align-items:flex-start;gap:16px;padding:13px 5px;border-bottom:1px solid #DFE7E0;font-size:12px}
 .plan-list-date{display:flex;flex-direction:column;gap:6px;min-width:85px}.plan-list-date small{font-size:10px;color:#7B8E82}
 .plan-list-content{min-width:0;flex:1}.plan-list-content p{margin:5px 0;overflow-wrap:anywhere}.plan-list-content>small{font-size:10px;color:#6C8172}.plan-status{margin-left:10px;font-size:10px;color:#789080}.plan-list-content details{margin-top:7px;font-size:11px;color:#607765}
 .plan-row-actions{display:flex;gap:7px}.plan-row-actions button{font-size:11px;padding:6px 9px;white-space:nowrap}
 @media(max-width:1250px){.rack-control-band{grid-template-columns:minmax(240px,.7fr) minmax(300px,1fr)}.rack-view-controls{grid-column:1/-1;justify-content:flex-end;padding-top:0}.rack-summary-strip{gap:18px}}
-@media(max-width:700px){.rack-control-band{display:flex;flex-direction:column;gap:10px}.rack-control-left,.rack-plan-reminders{width:100%}.rack-view-controls{align-self:flex-end}.rack-summary-strip b{font-size:18px}.plan-list-row{gap:9px;flex-wrap:wrap}.plan-row-actions{margin-left:auto}.rack-current-location{font-size:15px}}
+@media(max-width:700px){#plan-dialog{padding:20px 18px}#plan-dialog>.dialog-close{right:12px}#plan-list-rows{padding-right:5px}.rack-control-band{display:flex;flex-direction:column;gap:10px}.rack-control-left,.rack-plan-reminders{width:100%}.rack-view-controls{align-self:flex-end}.rack-summary-strip b{font-size:18px}.plan-list-row{gap:9px;flex-wrap:wrap}.plan-row-actions{margin-left:auto}.rack-current-location{font-size:15px}}
 @media(prefers-reduced-motion:reduce){.has-due-plans{animation:none}}
