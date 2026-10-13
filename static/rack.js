@@ -82,12 +82,23 @@ window.RackBoard=(()=>{
   }
 
   function applyZoom(){
-    // 固定行列始终不变。缩放只影响视觉大小；小屏可以水平/垂直滚动。
+    /* 输入：容器内宽、八列最小宽度和用户缩放档位；输出：铺满可用区域的等宽八列。
+     * 容器clientWidth已扣掉滚动条，另扣两侧padding；不能把第9列删除后的旧宽度继续当成架宽。
+     * 百分比缩放控制文字/卡高，列宽再按反向缩放补偿；窄窗口保留最小卡宽并水平滚动。
+     * 这里只调整显示，不修改72个真实位置、小鼠归属或服务端坐标。
+     */
     const grid=root.querySelector(".rack-board-grid"),viewport=root.querySelector(".rack-board-scroll");
     if(!grid||!viewport)return;
-    grid.style.zoom="1";
-    const scale=zoom==="fit"?Math.min(1,(viewport.clientWidth-24)/grid.offsetWidth):Number(zoom)/100;
-    grid.style.zoom=String(Math.max(.3,scale));
+    const viewportStyle=getComputedStyle(viewport),gridStyle=getComputedStyle(grid);
+    const available=viewport.clientWidth-parseFloat(viewportStyle.paddingLeft)-parseFloat(viewportStyle.paddingRight);
+    if(available<=0)return; // 切换到其他页面时隐藏架子，不用零宽度覆盖已保存的显示。
+    const columns=model.rack.columns;
+    const minimumColumn=parseFloat(gridStyle.getPropertyValue("--rack-column-min"));
+    const gap=parseFloat(gridStyle.columnGap);
+    const minimumWidth=columns*minimumColumn+(columns-1)*gap;
+    const scale=Math.max(.3,zoom==="fit"?Math.min(1,available/minimumWidth):Number(zoom)/100);
+    grid.style.width=String(Math.max(minimumWidth,available/scale))+"px";
+    grid.style.zoom=String(scale);
   }
 
   function applySearch(){
@@ -235,6 +246,7 @@ window.RackBoard=(()=>{
   }
   window.addEventListener("mousemove",highlightPhysicalTarget);
   window.addEventListener("touchmove",highlightPhysicalTarget,{passive:true});
-  window.addEventListener("resize",()=>{if(zoom==="fit")applyZoom();});
+  // 各个缩放档位都重新分配列宽，窗口变大后也不会留下多余空带。
+  window.addEventListener("resize",applyZoom);
   return {load};
 })();
