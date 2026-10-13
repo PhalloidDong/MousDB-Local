@@ -11,6 +11,7 @@ import mimetypes
 import os
 import re
 import socket
+import socketserver
 import sys
 import threading
 import webbrowser
@@ -194,11 +195,24 @@ def find_port(preferred: int = 8765) -> int:
     raise RuntimeError("8765-8814 端口均被占用")
 
 
+class LocalHTTPServer(ThreadingHTTPServer):
+    """只服务已知loopback地址，不做反向DNS查询。
+
+    HTTPServer默认getfqdn在部分macOS解析器中会等待数十秒；
+    本项目始终监听127.0.0.1，server_name可直接设为localhost。
+    保留原多线程请求、端口和HTTP处理逻辑，不改变任何数据业务。
+    """
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name='localhost'
+        self.server_port=self.server_address[1]
+
+
 def create_server(port: int | None = None) -> ThreadingHTTPServer:
     DB.initialize()
     RackLayoutStore(DB).initialize()
     PlanStore(DB).initialize()
-    return ThreadingHTTPServer(("127.0.0.1",port or find_port()),AppHandler)
+    return LocalHTTPServer(("127.0.0.1",port if port is not None else find_port()),AppHandler)
 
 
 def main() -> None:

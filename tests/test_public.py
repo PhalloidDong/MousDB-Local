@@ -47,6 +47,18 @@ class PublicTests(unittest.TestCase):
         store=PlanStore(self.db);items=store.reminders(date(2026,11,1))['items']
         self.assertEqual(len(items),1);self.assertEqual(items[0]['when'],'tomorrow');self.assertEqual(items[0]['plan_time'],'10:00')
         store.save({'status':'completed'},items[0]['id']);self.assertFalse(store.reminders(date(2026,11,2))['items'])
+    def test_local_server_does_not_query_reverse_dns(self):
+        # localhost已知，DNS故障不能阻止本地启动；端口0应由操作系统分配。
+        import app
+        old=app.DB;app.DB=self.db
+        try:
+            with patch('socket.getfqdn',side_effect=AssertionError('不应做DNS查询')):
+                server=app.create_server(0)
+                self.assertEqual(server.server_name,'localhost')
+                self.assertGreater(server.server_address[1],0)
+                server.server_close()
+        finally:app.DB=old
+
     def test_background_service_reuse_and_stop(self):
         # 真正启动一个临时数据库服务，再重复启动及停止；不访问用户的实例。
         env={**os.environ,'MOUSDB_DB_PATH':str(self.db.path),'MOUSDB_DATA_DIR':str(self.root)}
