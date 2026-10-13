@@ -39,7 +39,7 @@ class PublicTests(unittest.TestCase):
         self.assertTrue(result['ok']);self.assertTrue(Path(result['data']['backup']).exists());self.assertEqual(result['data']['result']['ear_tag'],'DEMO-中文')
     def test_mac_shortcut_quotes_spaces(self):
         target=mac_shortcut(self.root,PurePosixPath('/opt/example python/bin/python3'),PurePosixPath('/opt/example app/launcher.py'))
-        self.assertTrue(target.read_text().startswith('#!/bin/sh'));self.assertIn("'/opt/example python/bin/python3'",target.read_text())
+        self.assertTrue(target.read_text(encoding='utf-8').startswith('#!/bin/sh'));self.assertIn("'/opt/example python/bin/python3'",target.read_text(encoding='utf-8'))
         if sys.platform!='win32':
             subprocess.run(['sh','-n',str(target)],check=True);self.assertTrue(target.stat().st_mode&0o111)
     def test_explicit_plan_previous_day(self):
