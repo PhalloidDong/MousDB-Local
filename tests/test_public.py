@@ -57,6 +57,11 @@ class PublicTests(unittest.TestCase):
             again=json.loads(subprocess.check_output(cmd+['--check'],env=env,encoding='utf-8'))
             self.assertEqual(first['url'],again['url'])
             self.assertEqual(pid,json.loads((self.root/'service.json').read_text(encoding='utf-8'))['pid'])
+        except Exception:
+            # 此处日志只来自临时合成测试环境，用于CI定位启动失败。
+            log=self.root/'service-error.log'
+            if log.exists():print(log.read_text(encoding='utf-8',errors='replace'))
+            raise
         finally:
             subprocess.run(cmd+['--stop'],env=env,check=True,stdout=subprocess.DEVNULL)
         self.assertFalse((self.root/'service.json').exists())

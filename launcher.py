@@ -48,9 +48,12 @@ def start(open_browser=True):
                 if sys.platform=='win32' and python.with_name('pythonw.exe').exists():python=python.with_name('pythonw.exe')
                 options={'creationflags':subprocess.CREATE_NO_WINDOW} if sys.platform=='win32' else {'start_new_session':True}
                 with (data_dir/'service-out.log').open('ab') as out,(data_dir/'service-error.log').open('ab') as err:
-                    subprocess.Popen([str(python),str(ROOT/'app.py')],cwd=str(ROOT),env=env,stdout=out,stderr=err,**options)
+                    child=subprocess.Popen([str(python),str(ROOT/'app.py')],cwd=str(ROOT),env=env,stdout=out,stderr=err,**options)
                 deadline=time.monotonic()+30
                 while time.monotonic()<deadline:
+                    if child.poll() is not None:
+                        diagnostic=(data_dir/'service-error.log').read_text(encoding='utf-8',errors='replace')[-3000:]
+                        raise RuntimeError('后台进程退出：'+diagnostic)
                     if state.exists():
                         try:
                             candidate=int(json.loads(state.read_text())['port']);info=health(candidate)
