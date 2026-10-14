@@ -34,17 +34,42 @@ window.RackBoard=(()=>{
     localStorage.setItem("mousdb-rack-id",String(selected));render();
   }
 
+  function compactGenotype(mouse){
+    /* 输入：该鼠的genotype_name及strain_name；输出：仅供笼卡使用的纯文本简写。
+     * 明确阴性的标记整项省略，阳性只留标记名；F/+、F/F等已知等位状态保留。
+     * Spc是本界面对Sftpc-GFP的简写，Rosa26-Ai14显示为Ai14；不改字典或科研原始记录。
+     * 个体未记录具体基因型时用其已登记品系，不推断Ai14合子状态。
+     * 明确列了阴性的个体不能回退到品系名，否则会把不存在的基因重新显示出来。
+     */
+    const shortName=value=>String(value||"")
+      .replace(/\bSftpc-GFP\b/gi,"Spc-GFP")
+      .replace(/\bRosa26-Ai14\b/gi,"Ai14")
+      .replace(/\bActa2CreER\b/gi,"Acta2-CreER")
+      .replace(/[（(](?:杂合|纯合|合子状态未提供|合子状态待核对)[）)]/g,"").trim();
+    const entries=String(mouse.genotype_name||"").split(/[；;]/)
+      .map(s=>s.trim()).filter(s=>s&&!/^合子状态(?:待核对|待确认|未提供)$/.test(s));
+    if(!entries.length)return unique(String(mouse.strain_name||"").split(/[；;]/).map(shortName)).join("；")||"基因型待确认";
+    const labels=entries.flatMap(entry=>{
+      const match=entry.match(/^([^：:]+)[：:]\s*(.+)$/);
+      if(!match)return [shortName(entry)];
+      const marker=shortName(match[1]),status=shortName(match[2]);
+      if(/^(?:阴性|negative)(?:\s|[（(]|$)/i.test(status))return [];
+      if(/^(?:阳性|positive)$/i.test(status))return [marker];
+      // 其他明确写出的等位状态或待确认说明照录，不能把未知结果当作阳性。
+      return [marker+" "+status];
+    });
+    return unique(labels).join("；")||"未携带所列标记";
+  }
+
   function card(c){
-    /* 卡片主体从耳号、性别、周龄开始；有个体差异时逐鼠显示，完整品系资料仍在详情中。
+    /* 卡片主体从耳号、性别、周龄开始；每只鼠显示标记简写，完整品系资料仍在详情中。
      * 搜索继续包含未展开的品系、Line和基因型，不因精简卡面而丢失检索入口。 */
-    const lines=unique(c.mice.map(m=>m.line_name));
-    const genotypes=unique(c.mice.map(m=>m.genotype_name));
-    const text=[c.code,c.purpose,...c.mice.flatMap(m=>[m.code,m.ear_tag,m.sex,m.strain_name,m.line_name,m.genotype_name])].join(" ").toLowerCase();
+    const text=[c.code,c.purpose,...c.mice.flatMap(m=>[m.code,m.ear_tag,m.sex,m.strain_name,m.line_name,m.genotype_name,compactGenotype(m)])].join(" ").toLowerCase();
     const mouseRows=c.mice.map(m=>`<div class="rack-mouse-row">
       <button type="button" class="rack-ear" data-rack-mouse="${m.id}" title="打开${esc(m.code)}档案">${esc(m.ear_tag||"未设耳号")}</button>
       <span class="rack-sex ${esc(m.sex)}" title="${m.sex==='M'?'雄':m.sex==='F'?'雌':'性别未知'}">${sexLabel[m.sex]||"?"}</span>
       <span class="rack-age" title="${m.age_is_range?'候选出生日期对应的周龄范围':'周龄'}">${esc(m.age_label)}</span>
-      ${genotypes.length>1||lines.length>1?`<small class="rack-individual-genotype">${esc([m.line_name,m.genotype_name].filter(Boolean).join(" · ")||"基因型待确认")}</small>`:""}
+      <small class="rack-individual-genotype">${esc(compactGenotype(m))}</small>
     </div>`).join("");
     return `<article class="rack-card state-${esc(c.state)}" data-cage-id="${c.id}" data-searchtext="${esc(text)}" aria-label="${esc(c.code)}，${esc(c.state_label)}，${c.occupied}只小鼠">
       <div class="rack-card-handle" title="拖动整笼，调整位置"><span class="rack-grip" aria-hidden="true">⠿</span><button type="button" class="rack-cage-name" data-rack-rename="${c.id}" title="双击重命名；也可按Enter或F2" aria-label="重命名${esc(c.code)}">${esc(c.code)}</button><span class="rack-count">${c.occupied}/${c.capacity}</span></div>
