@@ -8,6 +8,7 @@
 window.RackBoard=(()=>{
   const root=document.getElementById("rack-home");
   let model=null,racks=[],selected=null,sortables=[],busy=false,lastDrag=0;
+  let renderedRackId=null; // 区分同架刷新与切换架子，避免把旧架的视角套到新架。
   let search="",zoom=localStorage.getItem("mousdb-rack-zoom")||"100";
   const letters="ABCDEFGHI",sexLabel={M:"♂",F:"♀",U:"?"};
   const coordinate=(row,col)=>row==null?"临时区":`${letters[row-1]}${col}`;
@@ -34,8 +35,8 @@ window.RackBoard=(()=>{
   }
 
   function card(c){
-    /* 基因型有共同值时集中显示，差异值逐鼠显示；所有小鼠行保留，不截断数量。 */
-    const strains=unique(c.mice.map(m=>m.strain_name));
+    /* 卡片主体从耳号、性别、周龄开始；有个体差异时逐鼠显示，完整品系资料仍在详情中。
+     * 搜索继续包含未展开的品系、Line和基因型，不因精简卡面而丢失检索入口。 */
     const lines=unique(c.mice.map(m=>m.line_name));
     const genotypes=unique(c.mice.map(m=>m.genotype_name));
     const text=[c.code,c.purpose,...c.mice.flatMap(m=>[m.code,m.ear_tag,m.sex,m.strain_name,m.line_name,m.genotype_name])].join(" ").toLowerCase();
@@ -50,14 +51,42 @@ window.RackBoard=(()=>{
       <div class="rack-card-tools"><button type="button" class="rack-state-chip" data-rack-state="${c.id}" title="设置笼状态">${esc(c.state_label)}<span>⌄</span></button><span class="rack-coordinate">${address(c)}</span><button type="button" class="rack-card-menu" data-rack-move="${c.id}" aria-label="移动${esc(c.code)}到指定位置" title="移动到指定位置">↗</button></div>
       ${c.genotyping?.pending?'<div class="rack-genotyping-flag" title="待鉴定幼鼠；出生日期：'+esc(c.genotyping.birth_dates.join('、'))+'">待鉴定幼鼠</div>':''}
       <div class="rack-card-body">
-        <div class="rack-genotype"><b>品系</b> ${esc(strains.join(" / ")||"待录入")}${lines.length?`<br><b>Line</b> ${esc(lines.join(" / "))}`:""}<br><b>基因型</b> ${esc(genotypes.join(" / ")||"待确认")}</div>
         ${c.mice.length?`<div class="rack-mouse-head"><span>耳号</span><span>性别</span><span>周龄</span></div><div class="rack-mouse-list">${mouseRows}</div>`:'<p class="rack-card-empty">这笼暂无在养小鼠</p>'}
       </div>
       <div class="rack-card-bottom"><button type="button" data-rack-open="${c.id}">笼卡详情</button><button type="button" data-rack-add-mouse="${c.id}" title="在此笼录入新鼠">＋ 小鼠</button></div>
     </article>`;
   }
 
+  function captureView(){
+    /* 输入：当前已显示的同一架子；输出：页面、架位、临时区及每张卡的滚动位置。
+     * 保存/撤销/失败回读都可能重建DOM，必须在替换前读取；切换架子时从新架顶部开始。
+     * 卡片用稳定cage_id关联，移到临时区或与另一笼交换后仍恢复自己的内部阅读位置。
+     */
+    if(renderedRackId!==model?.rack.id)return null;
+    const position=el=>el?{left:el.scrollLeft,top:el.scrollTop}:null;
+    return {page:{left:window.scrollX,top:window.scrollY},
+      board:position(root.querySelector(".rack-board-scroll")),
+      parking:position(root.querySelector(".rack-parking")),
+      cards:[...root.querySelectorAll(".rack-card[data-cage-id]")].map(el=>({
+        id:el.dataset.cageId,body:position(el.querySelector(".rack-card-body"))
+      }))};
+  }
+
+  function restoreView(view){
+    /* 输入：重建前的视角；输出：按相同坐标恢复新滚动容器，不改变任何服务端笼位。
+     * 先完成缩放和卡片布局，再恢复滚动；使用instant，避免全局平滑滚动造成回顶闪动。
+     * DOM尺寸发生变化时由浏览器自动约束到有效范围，无需延时反复滚动干扰用户操作。
+     */
+    if(!view)return;
+    const restore=(el,position)=>{if(el&&position)el.scrollTo({...position,behavior:"instant"});};
+    restore(root.querySelector(".rack-board-scroll"),view.board);
+    restore(root.querySelector(".rack-parking"),view.parking);
+    view.cards.forEach(c=>restore(root.querySelector(`.rack-card[data-cage-id="${c.id}"] .rack-card-body`),c.body));
+    window.scrollTo({...view.page,behavior:"instant"});
+  }
+
   function render(){
+    const view=captureView();
     destroyDrag();if(!model)return;
     const placed=new Map(model.cards.filter(c=>c.row_index!=null).map(c=>[`${c.row_index}:${c.column_index}`,c]));
     let cells="";
@@ -79,7 +108,8 @@ window.RackBoard=(()=>{
     <div class="rack-layout"><div class="rack-board-panel"><div class="rack-board-toolbar"><strong>真实架位</strong><span>上方为A行，左侧为第1列</span></div><div class="rack-board-scroll"><div class="rack-board-grid" role="grid" aria-label="横8列竖9行真实架子" aria-rowcount="${model.rack.rows}" aria-colcount="${model.rack.columns}">${cells}</div></div><p class="rack-board-help">拖到空格定位 · 拖到笼卡交换 · 拖到右侧暂存</p></div>
       <aside class="rack-parking-panel"><div class="rack-parking-title"><span class="rack-eyebrow">PARKING AREA</span><h2>待定位 / 临时停放 <small>${parked.length}</small></h2><p>架子放满时，可先把一笼拖到这里。刷新后仍会保留。</p></div><div class="rack-dropzone rack-parking" data-parking="true" aria-label="架旁临时停放区">${parked.map(card).join("")}<div class="rack-parking-placeholder">拖动笼卡到这里<br><small>尚无真实坐标的笼也会列在这里</small></div></div><button class="rack-new-parked" data-add-parking>＋ 新笼放到临时区</button></aside>
     </div>`;
-    applyZoom();applySearch();bindDrag();window.ExperimentPlans.mount();
+    renderedRackId=model.rack.id;
+    applyZoom();applySearch();bindDrag();window.ExperimentPlans.mount();restoreView(view);
   }
 
   function applyZoom(){
