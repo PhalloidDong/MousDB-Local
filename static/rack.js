@@ -48,6 +48,7 @@ window.RackBoard=(()=>{
     return `<article class="rack-card state-${esc(c.state)}" data-cage-id="${c.id}" data-searchtext="${esc(text)}" aria-label="${esc(c.code)}，${esc(c.state_label)}，${c.occupied}只小鼠">
       <div class="rack-card-handle" title="拖动整笼，调整位置"><span class="rack-grip" aria-hidden="true">⠿</span><button type="button" class="rack-cage-name" data-rack-rename="${c.id}" title="双击重命名；也可按Enter或F2" aria-label="重命名${esc(c.code)}">${esc(c.code)}</button><span class="rack-count">${c.occupied}/${c.capacity}</span></div>
       <div class="rack-card-tools"><button type="button" class="rack-state-chip" data-rack-state="${c.id}" title="设置笼状态">${esc(c.state_label)}<span>⌄</span></button><span class="rack-coordinate">${address(c)}</span><button type="button" class="rack-card-menu" data-rack-move="${c.id}" aria-label="移动${esc(c.code)}到指定位置" title="移动到指定位置">↗</button></div>
+      ${c.genotyping?.pending?'<div class="rack-genotyping-flag" title="待鉴定幼鼠；出生日期：'+esc(c.genotyping.birth_dates.join('、'))+'">待鉴定幼鼠</div>':''}
       <div class="rack-card-body">
         <div class="rack-genotype"><b>品系</b> ${esc(strains.join(" / ")||"待录入")}${lines.length?`<br><b>Line</b> ${esc(lines.join(" / "))}`:""}<br><b>基因型</b> ${esc(genotypes.join(" / ")||"待确认")}</div>
         ${c.mice.length?`<div class="rack-mouse-head"><span>耳号</span><span>性别</span><span>周龄</span></div><div class="rack-mouse-list">${mouseRows}</div>`:'<p class="rack-card-empty">这笼暂无在养小鼠</p>'}

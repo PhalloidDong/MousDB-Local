@@ -48,3 +48,7 @@ python mousdb_cli.py apply --file /path/to/private-request.json
 Codex可以总结本地记录并解释执行结果；禁止把输出粘贴到公开GitHub记录。
 
 实验计划使用一条批次记录：同一日期、时刻、操作的全部鼠放在一个payload.mouse_ids或ear_tags里。后端会合并同批任务，编辑或标记完成作用于整个批次。实际完成记录仍依据逐鼠事实；不同具体动作或时刻分别记录。
+
+鼠房整体重建使用`room.replace_inventory`，params填写room_id；payload必须含expected_room_name、expected_cage_ids、expected_mouse_ids、expected_rack_revisions、reason、cages。新笼包含rack_id、code、row、column、mice及可选card_state、genotyping。先核对旧库存并备份，再执行；不会推定死亡或转出。旧库存有外部谱系、繁育或计划关联时拒绝整体删除。
+
+待鉴定幼鼠使用`cage.genotyping.update`，params填写cage_id；payload可填pending、birth_dates（ISO日期列表）、pup_count（未知用null）、note。只标记笼位，不自动创建未知幼鼠或推断母鼠。批量重建默认生成M开头的中性系统编号。

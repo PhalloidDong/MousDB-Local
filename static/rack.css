@@ -33,3 +33,6 @@ button:disabled{opacity:.4;cursor:default}button:focus-visible,select:focus-visi
 
 /* 笼号按钮排除拖动，双击或键盘重命名；拖动仍可用旁边的握柄和卡片区域。 */
 .rack-cage-name{background:transparent;border:0;color:inherit;text-align:left;padding:0;margin:0;cursor:text;font-family:inherit;border-radius:2px}.rack-cage-name:hover{background:transparent;text-decoration:underline dotted}.cage-delete-button{color:#955D58;border-color:#D9C5BF;background:#F6EAE6}
+
+/* 笼级幼鼠待鉴定标记独立显示；保留繁育卡色，不把未知数量计入小鼠占笼数。 */
+.rack-genotyping-flag{margin:5px 8px 0;padding:3px 6px;border:1px solid #D9CDE3;border-radius:5px;background:#EDE5F1;color:#6A527C;font:10px/1.3 Helvetica,"Microsoft YaHei",sans-serif;flex:none}

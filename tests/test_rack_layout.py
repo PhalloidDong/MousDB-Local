@@ -3,6 +3,7 @@
 """
 import tempfile,unittest,sqlite3
 from pathlib import Path
+from unittest.mock import patch
 from db import Database,ValidationError
 from rack_layout import RackLayoutStore,LayoutConflict
 
@@ -56,8 +57,10 @@ class RackTests(unittest.TestCase):
     def test_state_age_and_retired_cage(self):
         b=self.s.board(self.rack);a=self.cages[0]['id'];self.s.card_state(self.rack,a,{'card_state':'quarantine','expected_revision':b['rack']['revision']})
         with self.assertRaises(ValidationError):self.s.card_state(self.rack,a,{'card_state':'empty','expected_revision':self.s.board(self.rack)['rack']['revision']})
-        c=self.s._age({'dob':None,'comment':'原始生日：2026-06-13 / 2026-06-17；无需对应单只。'})
-        self.assertIn('–',c['age_label']);self.assertEqual(self.s._age({'dob':None,'comment':''})['age_label'],'待确认')
+        # 固定计算日，避免两个候选生日碰巧取整到同一周时，误把正常显示判成错误。
+        with patch('db.today_text',return_value='2026-10-12'):
+            c=self.s._age({'dob':None,'comment':'原始生日：2026-06-13 / 2026-06-17；无需对应单只。'})
+        self.assertEqual(c['age_label'],'16–17周');self.assertEqual(self.s._age({'dob':None,'comment':''})['age_label'],'待确认')
         empty=self.db.create_cage({'rack_id':self.rack,'code':'retired'})
         self.s.board(self.rack);self.db.update_cage(empty['id'],{'active':0})
         self.assertNotIn(empty['id'],[x['id'] for x in self.s.board(self.rack)['cards']])

@@ -199,3 +199,17 @@ CREATE INDEX IF NOT EXISTS idx_movements_mouse ON mouse_movements(mouse_id, move
 CREATE INDEX IF NOT EXISTS idx_events_mouse ON mouse_events(mouse_id, event_date);
 CREATE INDEX IF NOT EXISTS idx_litters_status_birth ON litters(status, birth_date);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+-- 待鉴定是笼级状态；幼鼠数量未知时使用NULL，不创建虚构个体或推断母鼠。
+CREATE TABLE IF NOT EXISTS cage_genotyping (
+    cage_id INTEGER PRIMARY KEY REFERENCES cages(id) ON DELETE CASCADE,
+    pending INTEGER NOT NULL DEFAULT 0 CHECK(pending IN (0,1)),
+    birth_dates_json TEXT NOT NULL DEFAULT '[]',
+    pup_count INTEGER CHECK(pup_count IS NULL OR pup_count >= 0),
+    note TEXT NOT NULL DEFAULT '',updated_at TEXT NOT NULL
+);
+-- 用户明确要求重建鼠房时，原库存先在本机事务中归档；不参与网络同步。
+CREATE TABLE IF NOT EXISTS room_inventory_replacements (
+    id INTEGER PRIMARY KEY,room_id INTEGER NOT NULL REFERENCES rooms(id),
+    reason TEXT NOT NULL,snapshot_json TEXT NOT NULL,created_at TEXT NOT NULL
+);

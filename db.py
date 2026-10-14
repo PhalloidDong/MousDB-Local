@@ -271,6 +271,8 @@ class Database:
             cage = conn.execute("SELECT * FROM cages WHERE id=? AND active=1", (cid,)).fetchone()
             if not cage or conn.execute("SELECT 1 FROM mice WHERE cage_id=? AND status IN ('Active','Experimental')", (cid,)).fetchone():
                 continue
+            # 没有登记个体不等于空笼：待鉴定幼鼠尚无耳号时必须保留其物理笼位。
+            if conn.execute('SELECT 1 FROM cage_genotyping WHERE cage_id=? AND pending=1',(cid,)).fetchone():continue
             conn.execute("UPDATE cages SET active=0,updated_at=? WHERE id=?", (now_text(),cid))
             if layout_exists:
                 position = conn.execute("SELECT rack_id FROM cage_positions WHERE cage_id=?",(cid,)).fetchone()
@@ -393,40 +395,44 @@ class Database:
         self.audit(conn, "create", "rack", cur.lastrowid, f"新建 rack: {name}")
         return dict(conn.execute("SELECT * FROM racks WHERE id = ?", (cur.lastrowid,)).fetchone())
 
-    def create_cage(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def create_cage(self, payload: dict[str, Any], conn: sqlite3.Connection | None = None, *, numbering_prefix: str | None = None) -> dict[str, Any]:
         """建 cage 与随附多只小鼠共用一个事务，任何一行错误都会全部回滚。"""
 
-        with self.write() as conn:
-            rack_id = optional_id(payload.get("rack_id"))
-            code = str(payload.get("code") or "").strip()
-            if not rack_id or not code:
-                raise ValidationError("rack 和笼号不能为空")
-            if not conn.execute("SELECT 1 FROM racks WHERE id = ?", (rack_id,)).fetchone():
-                raise ValidationError("rack 不存在")
-            stamp = now_text()
-            try:
-                cur = conn.execute(
-                    """INSERT INTO cages(rack_id, code, capacity, purpose, color, active, note, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
-                    (rack_id, code, integer(payload.get("capacity", 5), "笼容量", minimum=1),
-                     str(payload.get("purpose") or "").strip(), str(payload.get("color") or "").strip(),
-                     str(payload.get("note") or "").strip(), stamp, stamp),
-                )
-            except sqlite3.IntegrityError as exc:
-                raise ValidationError(f"笼号“{code}”已存在") from exc
-            cage_id = cur.lastrowid
-            created_mice = []
-            rows = payload.get("mice") or []
-            if len(rows) > 100:
-                raise ValidationError("一次最多随 cage 新建 100 只小鼠")
-            for mouse in rows:
-                item = dict(mouse)
-                item["cage_id"] = cage_id
-                created_mice.append(self._create_mouse(conn, item))
-            self.audit(conn, "create", "cage", cage_id, f"新建 cage: {code}，随附小鼠 {len(rows)} 只")
-            result = dict(conn.execute("SELECT * FROM cages WHERE id = ?", (cage_id,)).fetchone())
-            result["created_mice"] = created_mice
-            return result
+        # 批量重建时沿用调用方事务，任一鼠校验失败会连同所有笼一起回滚。
+        if conn is None:
+            with self.write() as tx:
+                return self.create_cage(payload,tx,numbering_prefix=numbering_prefix)
+        rack_id = optional_id(payload.get("rack_id"))
+        code = str(payload.get("code") or "").strip()
+        if not rack_id or not code:
+            raise ValidationError("rack 和笼号不能为空")
+        if not conn.execute("SELECT 1 FROM racks WHERE id = ?", (rack_id,)).fetchone():
+            raise ValidationError("rack 不存在")
+        stamp = now_text()
+        try:
+            cur = conn.execute(
+                """INSERT INTO cages(rack_id, code, capacity, purpose, color, active, note, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                (rack_id, code, integer(payload.get("capacity", 5), "笼容量", minimum=1),
+                 str(payload.get("purpose") or "").strip(), str(payload.get("color") or "").strip(),
+                 str(payload.get("note") or "").strip(), stamp, stamp),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValidationError(f"笼号“{code}”已存在") from exc
+        cage_id = cur.lastrowid
+        created_mice = []
+        rows = payload.get("mice") or []
+        if len(rows) > 100:
+            raise ValidationError("一次最多随 cage 新建 100 只小鼠")
+        for mouse in rows:
+            item = dict(mouse)
+            item["cage_id"] = cage_id
+            created_mice.append(self._create_mouse(conn, item,numbering_prefix=numbering_prefix))
+        if "genotyping" in payload:self.set_cage_genotyping(cage_id,payload["genotyping"],conn)
+        self.audit(conn, "create", "cage", cage_id, f"新建 cage: {code}，随附小鼠 {len(rows)} 只")
+        result = dict(conn.execute("SELECT * FROM cages WHERE id = ?", (cage_id,)).fetchone())
+        result["created_mice"] = created_mice
+        return result
 
     def update_cage(self, cage_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         with self.write() as conn:
@@ -448,8 +454,34 @@ class Database:
                 )
             except sqlite3.IntegrityError as exc:
                 raise ValidationError("rack 不存在或笼号重复") from exc
+            if "genotyping" in payload:self.set_cage_genotyping(cage_id,payload["genotyping"],conn)
             self.audit(conn, "update", "cage", cage_id, f"更新 cage: {code}")
             return self.get_cage(cage_id, conn)
+
+    def cage_genotyping(self,conn,cage_id):
+        """输出笼级待鉴定标记、幼鼠出生日期和已知数量；未报告数量保持None。"""
+        row=conn.execute('SELECT * FROM cage_genotyping WHERE cage_id=?',(cage_id,)).fetchone()
+        return {'pending':bool(row['pending']),'birth_dates':json.loads(row['birth_dates_json']),
+                'pup_count':row['pup_count'],'note':row['note']} if row else {'pending':False,'birth_dates':[],'pup_count':None,'note':''}
+
+    def set_cage_genotyping(self,cage_id,payload,conn=None):
+        """输入笼ID及标记对象；只保存已报告事实，不生成幼鼠或推断母鼠。
+
+        批量导入可传同一事务；普通修改可单独调用。清除标记时保留原出生日期，便于回查。
+        """
+        if conn is None:
+            with self.write() as tx:return self.set_cage_genotyping(cage_id,payload,tx)
+        self._check_fk(conn,'cages',cage_id,'笼')
+        if not isinstance(payload,dict):raise ValidationError('待鉴定标记必须为对象')
+        old=self.cage_genotyping(conn,cage_id);data={**old,**payload}
+        if not isinstance(data['pending'],bool):raise ValidationError('待鉴定标记必须为true/false')
+        if not isinstance(data['birth_dates'],list):raise ValidationError('幼鼠出生日期必须为列表')
+        days=sorted(set(parse_date(x,'幼鼠出生日期',required=True) for x in data['birth_dates']))
+        count=None if data['pup_count'] in (None,'') else integer(data['pup_count'],'幼鼠数量',minimum=0)
+        conn.execute('INSERT OR REPLACE INTO cage_genotyping VALUES(?,?,?,?,?,?)',
+                     (cage_id,int(data['pending']),json.dumps(days),count,str(data['note'] or ''),now_text()))
+        self.audit(conn,'genotyping','cage',cage_id,'更新待鉴定幼鼠标记；数量未知时保持空值')
+        return self.cage_genotyping(conn,cage_id)
 
     def delete_cage(self, cage_id: int) -> dict[str, Any]:
         """删除当前空笼卡，释放坐标；cage及科研历史保留。
@@ -463,6 +495,7 @@ class Database:
             if not old:raise ValidationError('笼不存在')
             occupied=conn.execute("SELECT COUNT(*) FROM mice WHERE cage_id=? AND status IN ('Active','Experimental')",(cage_id,)).fetchone()[0]
             if occupied:raise ValidationError('该笼还有'+str(occupied)+'只在养小鼠，请先移笼后再删除')
+            if self.cage_genotyping(conn,cage_id)['pending']:raise ValidationError('该笼仍有待鉴定幼鼠标记，请先核对幼鼠并清除标记后再删除')
             conn.execute('UPDATE cages SET active=0,updated_at=? WHERE id=?',(now_text(),cage_id))
             exists=conn.execute("SELECT 1 FROM sqlite_master WHERE name='cage_positions'").fetchone()
             position=conn.execute('SELECT * FROM cage_positions WHERE cage_id=?',(cage_id,)).fetchone() if exists else None
@@ -479,15 +512,21 @@ class Database:
     # ------------------------------------------------------------------
     # 小鼠编号、校验与写入
     # ------------------------------------------------------------------
-    def _next_codes(self, conn: sqlite3.Connection, count: int = 1) -> list[str]:
+    def _next_codes(self, conn: sqlite3.Connection, count: int = 1, *, numbering_prefix: str | None = None) -> list[str]:
         rows = conn.execute("SELECT code FROM mice ORDER BY id DESC").fetchall()
         prefix, width = "M", 4
-        for row in rows:
-            match = re.match(r"^(.*?)(\d+)$", row["code"])
-            if match:
-                prefix, digits = match.groups()
-                width = len(digits)
-                break
+        if numbering_prefix is not None:
+            # 受控批量导入可用中性前缀M，避免非Acta2库存继承实验专用编号。
+            # 仍由程序连续分配并检查唯一性，不接受手工指定某只鼠的code。
+            prefix=str(numbering_prefix).strip()
+            if not re.fullmatch(r'[A-Za-z][A-Za-z0-9 _-]{0,39}',prefix):raise ValidationError('编号前缀格式无效')
+        else:
+            for row in rows:
+                match = re.match(r"^(.*?)(\d+)$", row["code"])
+                if match:
+                    prefix, digits = match.groups()
+                    width = len(digits)
+                    break
         maximum = 0
         for row in conn.execute("SELECT code FROM mice"):
             match = re.match(r"^(.*?)(\d+)$", row["code"])
@@ -641,9 +680,9 @@ class Database:
                 warnings.append("该 cage 存在雌雄混笼；记录已保留，请确认是否为繁育安排。")
         return warnings
 
-    def _create_mouse(self, conn: sqlite3.Connection, payload: dict[str, Any]) -> dict[str, Any]:
+    def _create_mouse(self, conn: sqlite3.Connection, payload: dict[str, Any], *, numbering_prefix: str | None = None) -> dict[str, Any]:
         values = self._normalize_mouse(conn, payload)
-        code = self._next_codes(conn)[0]  # 明确忽略 payload 中任何 code。
+        code = self._next_codes(conn,numbering_prefix=numbering_prefix)[0]  # 明确忽略payload中任何code。
         warnings = self._warnings(conn, values)
         stamp = now_text()
         columns = list(values)
@@ -814,6 +853,7 @@ class Database:
                        g.name AS genotype_name,g.name_html AS genotype_name_html,m.dob,m.comment,m.death_date
                        FROM mice m LEFT JOIN mouse_lines l ON l.id=m.line_id LEFT JOIN genotypes g ON g.id=m.genotype_id
                        WHERE m.cage_id=? AND m.status IN ('Active','Experimental') ORDER BY m.ear_tag,m.code""", (row["id"],)).fetchall()
+                item["genotyping"] = self.cage_genotyping(conn,row["id"])
                 item["mice"] = [self._add_ages(dict(m)) for m in mice]
                 item["ear_tags"] = [m["ear_tag"] for m in mice if m["ear_tag"]]
                 item["missing_ear_tags"] = sum(1 for m in mice if not m["ear_tag"])
@@ -835,7 +875,7 @@ class Database:
             JOIN racks k ON k.id=c.rack_id JOIN rooms r ON r.id=k.room_id ORDER BY c.code""").fetchall()
         result=[]
         for row in rows:
-            item=dict(row); mice=[dict(x) for x in conn.execute("""SELECT m.id,m.code,m.ear_tag,m.sex,m.status,
+            item=dict(row);item["genotyping"]=self.cage_genotyping(conn,row["id"]); mice=[dict(x) for x in conn.execute("""SELECT m.id,m.code,m.ear_tag,m.sex,m.status,
                 l.name line_name,l.name_html line_name_html,g.name genotype_name,g.name_html genotype_name_html,m.dob,m.comment,m.death_date FROM mice m LEFT JOIN mouse_lines l ON l.id=m.line_id
                 LEFT JOIN genotypes g ON g.id=m.genotype_id WHERE m.cage_id=? AND m.status IN ('Active','Experimental')""",(row["id"],))]
             item.update(occupied=len(mice),mice=[self._add_ages(x) for x in mice],ear_tags=[x["ear_tag"] for x in mice if x["ear_tag"]],

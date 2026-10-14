@@ -161,7 +161,7 @@ class RackLayoutStore:
         for row in c.execute('''SELECT c.*,p.row_index,p.column_index,p.card_state
             FROM cages c JOIN cage_positions p ON p.cage_id=c.id
             WHERE p.rack_id=? ORDER BY c.code,c.id''',(rack_id,)):
-            card=dict(row)
+            card=dict(row);card['genotyping']=self.db.cage_genotyping(c,row['id'])
             mice=c.execute('''SELECT m.*,s.name strain_name,s.name_html strain_name_html,
                 l.name line_name,l.name_html line_name_html,g.name genotype_name,g.name_html genotype_name_html
                 FROM mice m LEFT JOIN strains s ON s.id=m.strain_id LEFT JOIN mouse_lines l ON l.id=m.line_id
@@ -169,7 +169,7 @@ class RackLayoutStore:
                 WHERE m.cage_id=? AND m.status IN ('Active','Experimental') ORDER BY m.ear_tag,m.id''',(row['id'],)).fetchall()
             card['mice']=[self._age(dict(m)) for m in mice];card['occupied']=len(mice)
             breeding=c.execute("SELECT 1 FROM matings WHERE cage_id=? AND status='Active'",(card['id'],)).fetchone()
-            inferred=('empty' if not mice else 'experimental' if any(m['status']=='Experimental' for m in mice)
+            inferred=('pending' if not mice and card['genotyping']['pending'] else 'empty' if not mice else 'experimental' if any(m['status']=='Experimental' for m in mice)
                 else 'breeding' if breeding else 'holding')
             card['state']=card['card_state'] or inferred;card['state_label']=STATES[card['state']]
             cards.append(card)
@@ -259,6 +259,7 @@ class RackLayoutStore:
             self._sync(c);self._rack(c,rack_id,payload.get('expected_revision',-1))
             p=c.execute('SELECT * FROM cage_positions WHERE rack_id=? AND cage_id=?',(rack_id,cage_id)).fetchone()
             if not p:raise ValidationError('该笼不在当前架子')
+            if value=='empty' and self.db.cage_genotyping(c,cage_id)['pending']:raise ValidationError('有待鉴定幼鼠的笼不能标记为空笼')
             if value=='empty' and c.execute("SELECT 1 FROM mice WHERE cage_id=? AND status IN ('Active','Experimental')",(cage_id,)).fetchone():
                 raise ValidationError('笼内还有在养小鼠，不能标记为空笼')
             c.execute('UPDATE cage_positions SET card_state=? WHERE cage_id=?',(value,cage_id))
