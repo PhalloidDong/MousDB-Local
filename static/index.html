@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/rack.css">
   <link rel="stylesheet" href="/plans.css">
+  <link rel="stylesheet" href="/genotyping.css">
 </head>
 <body>
   <aside class="sidebar">
@@ -16,8 +17,9 @@
       <button data-page="rack" class="active">架子首页</button>
       <button data-page="dashboard">概览</button>
       <button data-page="mice">小鼠信息</button>
+      <button data-page="protocols">鉴定程序</button>
+      <button data-page="results">鉴定结果</button>
       <button data-page="dead">死亡小鼠</button>
-      <button data-page="cages">房间与笼位</button>
       <button data-page="breeding">繁育管理</button>
       <button data-page="import">批量导入</button>
       <button data-page="settings">品系和备份</button>
@@ -46,15 +48,14 @@
       <div id="mice-table" class="table-wrap loading">正在载入小鼠……</div>
     </section>
 
+    <section id="page-protocols" class="page"><div id="genotyping-protocol"></div></section>
+    <section id="page-results" class="page"><div id="genotyping-result"></div></section>
+
     <section id="page-dead" class="page">
       <div class="toolbar"><input id="dead-search" type="search" placeholder="搜索死亡记录……"><select id="dead-strain-filter"></select><select id="dead-line-filter"></select><a class="button" href="/api/export/mice.csv?scope=dead">导出死亡小鼠 CSV</a></div>
       <div id="dead-table" class="table-wrap loading">正在载入死亡记录……</div>
     </section>
 
-    <section id="page-cages" class="page">
-      <div class="toolbar"><button data-action="new-room">＋ Room</button><button data-action="new-rack">＋ Rack</button><button data-action="new-cage" class="primary">＋ Cage（可同时录鼠）</button></div>
-      <div id="cage-grid" class="cage-grid loading">正在载入笼位……</div>
-    </section>
 
     <section id="page-breeding" class="page">
       <div class="toolbar"><button data-action="new-mating" class="primary">＋ 建立繁育</button></div><div id="mating-list" class="cards loading">正在载入繁育记录……</div>
@@ -76,9 +77,11 @@
   <dialog id="editor"><form id="editor-form"><button type="button" class="dialog-close" aria-label="关闭">×</button><h2 id="editor-title"></h2><div id="editor-body"></div><div class="dialog-actions"><button type="button" class="cancel">取消</button><button type="submit" class="primary">保存</button></div></form></dialog>
   <dialog id="detail"><button type="button" class="dialog-close" aria-label="关闭">×</button><div id="detail-body"></div><div class="dialog-actions"><button type="button" class="cancel">关闭</button></div></dialog>
   <dialog id="plan-dialog"><button type="button" class="dialog-close" aria-label="关闭">×</button><h2>实验计划</h2><div id="plan-dialog-content"></div><div class="dialog-actions"><button type="button" class="cancel">关闭</button></div></dialog>
+  <dialog id="genotyping-viewer"><button type="button" class="dialog-close" aria-label="关闭">×</button><div id="genotyping-viewer-body"></div><div class="dialog-actions"><button type="button" class="cancel">关闭</button></div></dialog>
   <script src="/vendor/sortable-1.15.7.min.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/plans.js" defer></script>
   <script src="/rack.js" defer></script>
+  <script src="/genotyping.js" defer></script>
 </body>
 </html>

@@ -49,7 +49,11 @@
     "tests/test_migration.py",
     "tests/test_public.py",
     "tests/test_rack_layout.py",
-    "tests/test_static.py"
+    "tests/test_static.py",
+    "genotyping_media.py",
+    "static/genotyping.js",
+    "static/genotyping.css",
+    "tests/test_genotyping_media.py"
   ],
   "data_policy": "User SQLite databases and exports are excluded; runtime storage is outside the source repository."
 }

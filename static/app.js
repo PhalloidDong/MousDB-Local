@@ -27,7 +27,7 @@ function notify(message, type = "success") {
 const titles = {
   rack:["动物房架位","与真实笼位一一对应"],
   dashboard:["概览","colony 当前状态与待办"], mice:["小鼠信息","非死亡小鼠档案"], dead:["死亡小鼠","保留完整历史的死亡记录"],
-  cages:["房间与笼位","room → rack → cage"], breeding:["繁育管理","交配、产仔与离乳谱系"], import:["批量导入","预检后原子提交"], settings:["品系和备份","受控词表、导出和一致性备份"]
+  protocols:["鉴定程序","引物与PCR程序原图"], results:["鉴定结果","鉴定结果原图资料"], breeding:["繁育管理","交配、产仔与离乳谱系"], import:["批量导入","预检后原子提交"], settings:["品系和备份","受控词表、导出和一致性备份"]
 };
 
 async function showPage(page) {
@@ -402,12 +402,6 @@ function eventForm(m) {
   });
 }
 
-async function loadCages() {
-  // 当前笼列表隐藏已自动停用的空笼；历史API仍保留原笼供回查。
-  const cages=(await api("/api/cages")).filter(c=>c.active || c.occupied); $("#cage-grid").innerHTML=cages.map(c=>`<article class="cage-card" data-cage="${c.id}"><span class="capacity">${c.occupied}/${c.capacity}</span><h3>${esc(c.code)}</h3><div class="cage-meta">${esc(c.room_name)} / ${esc(c.rack_name)} · ${esc(c.purpose||"未设置用途")}</div><p><b>耳标：</b>${c.ear_tags.map(esc).join("、")||"—"}${c.missing_ear_tags?`；另有 ${c.missing_ear_tags} 只未设置耳标`:""}</p><div class="line-tags">${c.line_items?.length?c.line_items.map(x=>`<span class="badge rich-render">${richMarkup(x.name_html,x.name)}</span>`).join(""):"—"}</div></article>`).join("")||"尚未建立 cage";
-  $$(`[data-cage]`).forEach(x=>x.onclick=()=>cageDetail(Number(x.dataset.cage)));
-}
-
 async function cageDetail(id) {
   const c=await api(`/api/cages/${id}`);
   $("#detail-body").innerHTML=`<h2>Cage ${esc(c.code)}</h2><p>${esc(c.room_name)} / ${esc(c.rack_name)} · ${c.occupied}/${c.capacity} · ${esc(c.purpose||"未设置用途")}</p>${c.genotyping?.pending?`<p class="warning-text">待鉴定幼鼠 · 出生日期：${esc(c.genotyping.birth_dates.join('、')||'未提供')} · 数量：${c.genotyping.pup_count==null?'未提供':c.genotyping.pup_count}<br>${esc(c.genotyping.note)}</p>`:''}${c.note?`<p class="muted">${esc(c.note)}</p>`:''}<h3>当前小鼠</h3>${c.mice.map(m=>`<div class="audit-row"><button class="code-link" data-mouse="${m.id}">${esc(m.ear_tag||"无耳标")} · ${esc(m.code)}</button> · ${m.sex} · <span class="rich-render">${richMarkup(m.line_name_html,m.line_name||"未设置 line")}</span> · <span class="rich-render">${richMarkup(m.genotype_name_html,m.genotype_name)}</span> · ${esc(m.age_label||"待确认")}</div>`).join("")||"空 cage"}<div class="quick-actions"><button id="edit-cage">编辑 cage</button><button id="delete-cage" class="cage-delete-button" ${c.occupied||c.genotyping?.pending?'disabled':''} title="${c.genotyping?.pending?'先核对待鉴定幼鼠并清除标记后才能删除':c.occupied?'先移出在养小鼠后才能删除':'删除空笼卡，历史记录保留'}">删除该笼</button></div>${c.occupied?'<p class="muted">本笼仍有在养小鼠，请先移笼再删除。</p>':''}`;
@@ -426,8 +420,6 @@ async function cageDetail(id) {
   };
 }
 
-function roomForm(){openEditor("新建 Room",`<div class="form-grid">${field("名称","name","text","","required")}${field("建筑","building")}<label class="field full"><span>备注</span><textarea name="note"></textarea></label></div>`,f=>api("/api/references/rooms",{method:"POST",body:formData(f)}));}
-function rackForm(){openEditor("新建 Rack",`<div class="form-grid">${selectField("Room","room_id",options(state.refs.rooms,"","— 请选择 —"))}${field("名称","name","text","","required")}${field("容量（可空）","capacity","number","","min=1")}<label class="field full"><span>备注</span><textarea name="note"></textarea></label></div>`,f=>api("/api/racks",{method:"POST",body:formData(f)}));}
 
 async function cageForm(cage=null){const racks=state.refs.racks.map(x=>({...x,label:`${x.room_name}/${x.name}`}));const c=cage||{};const html=`<div class="form-grid">${selectField("Rack","rack_id",options(racks,c.rack_id,"— 请选择 —","label"))}${field("笼号","code","text",c.code,"required")}${field("容量","capacity","number",c.capacity||5,"min=1 required")}${field("用途","purpose","text",c.purpose)}${field("笼卡颜色","color","text",c.color)}<label class="full"><input type="checkbox" name="genotyping_pending" ${c.genotyping?.pending?"checked":""}> 有待鉴定幼鼠（出生记录保留；不自动增加个体）</label><label class="field full"><span>备注</span><textarea name="note">${esc(c.note||"")}</textarea></label></div>${c.id?"":`<hr><h3>同时录入小鼠（可选）</h3><div id="cage-mice"></div><button type="button" id="add-cage-mouse">＋ 添加一行小鼠</button>`}`;
   openEditor(c.id?`编辑 cage ${c.code}`:"新建 Cage",html,async form=>{const data=formData(form);data.genotyping={...(c.genotyping||{}),pending:form.querySelector("[name=genotyping_pending]").checked};delete data.genotyping_pending;if(!c.id)data.mice=$$(".cage-mouse-row",form).map(r=>Object.fromEntries($$("[name]",r).map(input=>[input.name,input.value])));await api(c.id?`/api/cages/${c.id}`:"/api/cages",{method:c.id?"PUT":"POST",body:data});});
@@ -447,12 +439,12 @@ async function commitImport(){if(!state.previewValid)return;const d=await api("/
 function loadSettings(){const names={rooms:"Room",strains:"Strain",lines:"Line",genotypes:"Genotype"};$("#reference-list").innerHTML=Object.entries(names).map(([kind,label])=>`<h3>${label} <button data-new-ref="${kind}">＋</button></h3><div>${state.refs[kind].map(x=>`<button data-edit-ref="${kind}:${x.id}" class="badge">${esc(x.name)}${x.active===0?"（停用）":""}</button>`).join(" ")||"—"}</div>`).join("");$$(`[data-new-ref]`).forEach(x=>x.onclick=()=>referenceForm(x.dataset.newRef));$$(`[data-edit-ref]`).forEach(x=>x.onclick=()=>{const[k,id]=x.dataset.editRef.split(":");referenceForm(k,state.refs[k].find(v=>v.id===Number(id)));});}
 function referenceForm(kind,item=null){const label={rooms:"Room",strains:"Strain",lines:"Line",genotypes:"Genotype"}[kind];const nameEditor=kind==="rooms"?field("名称","name","text",item?.name,"required"):richPicker(kind,"name",item?.id);openEditor(`${item?"编辑":"新建"} ${label}`,`<div class="form-grid">${nameEditor}${kind==="rooms"?field("建筑","building","text",item?.building):field("说明","description","text",item?.description)}${item?`<label><input name="active" type="checkbox" value="1" ${item.active?"checked":""}> 启用</label>`:""}</div>`,async f=>{const d=formData(f);if(kind!=="rooms"){d.name=d.name_name;d.name_html=d.name_html;delete d.name_id;delete d.name_name;}if(item)d.active=$("[name=active]",f).checked;await api(`/api/references/${kind}${item?`/${item.id}`:""}`,{method:item?"PUT":"POST",body:d});});}
 
-const loaders={rack:()=>window.RackBoard.load(),dashboard:loadDashboard,mice:()=>loadMice("alive"),dead:()=>loadMice("dead"),cages:loadCages,breeding:loadBreeding,import:loadImport,settings:loadSettings};
+const loaders={rack:()=>window.RackBoard.load(),dashboard:loadDashboard,mice:()=>loadMice("alive"),dead:()=>loadMice("dead"),protocols:()=>window.GenotypingLibrary.load("protocol"),results:()=>window.GenotypingLibrary.load("result"),breeding:loadBreeding,import:loadImport,settings:loadSettings};
 
 document.addEventListener("DOMContentLoaded",async()=>{
   $$(`[data-page]`).forEach(x=>x.addEventListener("click",()=>showPage(x.dataset.page)));
   $$(`[data-action=new-mouse]`).forEach(x=>x.onclick=()=>mouseForm());
-  $("[data-action=new-room]").onclick=roomForm;$("[data-action=new-rack]").onclick=rackForm;$("[data-action=new-cage]").onclick=()=>cageForm();$("[data-action=new-mating]").onclick=matingForm;
+  $("[data-action=new-mating]").onclick=matingForm;
   $$("dialog .cancel, dialog .dialog-close").forEach(x=>x.addEventListener("click",()=>x.closest("dialog").close()));
   $("#refresh").onclick=()=>showPage(state.page);$("#preview-import").onclick=()=>previewImport().catch(e=>notify(e.message,"error"));$("#commit-import").onclick=()=>commitImport().catch(e=>notify(e.message,"error"));
   ["mouse-search","mouse-strain-filter","mouse-line-filter","mouse-status-filter"].forEach(id=>$("#"+id).addEventListener("change",()=>loadMice("alive")));

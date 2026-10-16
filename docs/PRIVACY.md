@@ -2,7 +2,7 @@
 
 GitHub只保存Python/网页代码、文档、图标以及合成DEMO示例。仓库不会携带任何使用者的小鼠数据库、实验记录、截图、备份或实际CSV。
 
-软件只监听`127.0.0.1`，所有网页读写和Codex CLI操作都在本机SQLite中完成。没有遥测、上传API、云数据库或在线CDN；互联网只用于下载/更新程序和用户主动使用的Codex服务。
+软件只监听`127.0.0.1`，所有网页读写和Codex CLI操作都在本机SQLite中完成。没有遥测、向外部服务器上传数据的接口、云数据库或在线CDN；互联网只用于下载/更新程序和用户主动使用的Codex服务。
 
 默认数据目录位于用户目录、Git仓库之外。数据库可以通过环境变量或被忽略的`.mousdb-local.json`定位，不把作者或其他人的路径固定在公共代码中。旧版存在`data/mousdb.sqlite3`时沿用该库；数据目录依然被忽略。
 
@@ -18,3 +18,5 @@ GitHub只保存Python/网页代码、文档、图标以及合成DEMO示例。仓
 用户主动提供给Codex的信息可以由Codex处理；这不等于将其提交到GitHub。GitHub issue、PR、提交说明和Actions日志也不能包含实际鼠信息。
 
 可参考[GitHub关于敏感数据与Git历史的说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)。
+
+鉴定程序和鉴定结果原图以BLOB保存在同一个私有SQLite中，源码仓库不保存图片或资料清单。备份数据库也会包含原图；通过页面移除资料只会停用，原始证据保留在本机。软件不提取引物序列、PCR程序或自动判断基因型。

@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 from db import Database, ValidationError
 from rack_layout import RackLayoutStore, LayoutConflict
 from experiment_plans import PlanStore
+from genotyping_media import GenotypingMediaStore, MAX_IMAGE_BYTES
 from runtime_paths import storage_paths
 
 
@@ -89,6 +90,21 @@ class AppHandler(BaseHTTPRequestHandler):
             # 明确排程独立保存；站内提醒只显示今天/明天的未完成计划。
             if path == "/api/plans/reminders": return self._json(200,PlanStore(DB).reminders())
             if path == "/api/plans": return self._json(200,PlanStore(DB).list())
+            # 鉴定图像保存在私有SQLite；原图接口独立于公开static目录。
+            if path == "/api/genotyping-documents":
+                return self._json(200, GenotypingMediaStore(DB).list(query.get("category", ["protocol"])[0]))
+            media_match = re.fullmatch(r"/api/genotyping-documents/(\d+)", path)
+            if media_match: return self._json(200, GenotypingMediaStore(DB).get(int(media_match.group(1))))
+            image_match = re.fullmatch(r"/api/genotyping-images/(\d+)", path)
+            if image_match:
+                body, mime_type = GenotypingMediaStore(DB).image(int(image_match.group(1)))
+                self.send_response(200)
+                self.send_header("Content-Type", mime_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "private, no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers(); self.wfile.write(body)
+                return
             if path == "/api/dashboard": return self._json(200, DB.dashboard())
             if path == "/api/mice/next-code": return self._json(200, {"code": DB.next_code(), "readonly": True})
             if path == "/api/mice":
@@ -139,7 +155,19 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         try:
-            path=urlparse(self.path).path; payload=self._payload()
+            parsed=urlparse(self.path); path=parsed.path
+            image_match=re.fullmatch(r"/api/genotyping-documents/(\d+)/images",path)
+            if image_match:
+                # 每次上传一张原图，避免多图JSON/base64膨胀；元数据仍走原JSON接口。
+                try: length=int(self.headers.get("Content-Length","0"))
+                except ValueError: raise ValidationError("图片长度无效")
+                if not 0 < length <= MAX_IMAGE_BYTES: raise ValidationError("单张图片不能超过8 MB")
+                body=self.rfile.read(length)
+                if len(body)!=length: raise ValidationError("图片上传未完成，请重试")
+                filename=parse_qs(parsed.query).get("filename",[""])[0]
+                return self._json(201,GenotypingMediaStore(DB).add_image(int(image_match.group(1)),body,filename))
+            payload=self._payload()
+            if path == "/api/genotyping-documents": return self._json(201,GenotypingMediaStore(DB).save(payload))
             # 建笼和定位一并提交；跨格移动/交换/撤销都由服务器验证。
             if path == "/api/rack-layouts": return self._json(201,RackLayoutStore(DB).save_rack(payload))
             rack_match=re.fullmatch(r"/api/rack-layouts/(\d+)/(move|undo|cages)",path)
@@ -170,6 +198,8 @@ class AppHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:  # noqa: N802
         try:
             path=urlparse(self.path).path; payload=self._payload()
+            media_match=re.fullmatch(r"/api/genotyping-documents/(\d+)",path)
+            if media_match:return self._json(200,GenotypingMediaStore(DB).save(payload,int(media_match.group(1))))
             rack_match=re.fullmatch(r"/api/rack-layouts/(\d+)",path)
             if rack_match: return self._json(200,RackLayoutStore(DB).save_rack(payload,int(rack_match.group(1))))
             card_match=re.fullmatch(r"/api/rack-layouts/(\d+)/cards/(\d+)",path)
@@ -186,9 +216,14 @@ class AppHandler(BaseHTTPRequestHandler):
         except Exception as exc: self._handle_error(exc)
 
     def do_DELETE(self) -> None:
-        """只允许删除空笼卡；动物和历史由业务层保留。"""
+        """处理空笼删除和鉴定资料停用；动物、原图及历史由业务层保留。"""
         try:
-            match=re.fullmatch(r"/api/cages/(\d+)",urlparse(self.path).path)
+            path=urlparse(self.path).path
+            media_match=re.fullmatch(r"/api/genotyping-documents/(\d+)",path)
+            if media_match:return self._json(200,GenotypingMediaStore(DB).archive(int(media_match.group(1))))
+            image_match=re.fullmatch(r"/api/genotyping-images/(\d+)",path)
+            if image_match:return self._json(200,GenotypingMediaStore(DB).remove_image(int(image_match.group(1))))
+            match=re.fullmatch(r"/api/cages/(\d+)",path)
             if match:return self._json(200,DB.delete_cage(int(match.group(1))))
             return self._json(404,error="API路径不存在")
         except Exception as exc:self._handle_error(exc)
@@ -220,6 +255,7 @@ def create_server(port: int | None = None) -> ThreadingHTTPServer:
     DB.initialize()
     RackLayoutStore(DB).initialize()
     PlanStore(DB).initialize()
+    GenotypingMediaStore(DB).initialize()
     return LocalHTTPServer(("127.0.0.1",port if port is not None else find_port()),AppHandler)
 
 

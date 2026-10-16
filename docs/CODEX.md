@@ -52,3 +52,11 @@ Codex可以总结本地记录并解释执行结果；禁止把输出粘贴到公
 鼠房整体重建使用`room.replace_inventory`，params填写room_id；payload必须含expected_room_name、expected_cage_ids、expected_mouse_ids、expected_rack_revisions、reason、cages。新笼包含rack_id、code、row、column、mice及可选card_state、genotyping。先核对旧库存并备份，再执行；不会推定死亡或转出。旧库存有外部谱系、繁育或计划关联时拒绝整体删除。
 
 待鉴定幼鼠使用`cage.genotyping.update`，params填写cage_id；payload可填pending、birth_dates（ISO日期列表）、pup_count（未知用null）、note。只标记笼位，不自动创建未知幼鼠或推断母鼠。批量重建默认生成M开头的中性系统编号。
+
+## 鉴定图片资料
+
+先用`genotyping.list`查询目录（`params.category`为`protocol`或`result`），`genotyping.get`读取卡片。
+用`genotyping.create`新建标题/基因名/备注，`genotyping.update`修改文字，`genotyping.image.add`将用户指定的本机图片加入卡片。
+`image.add`参数为`document_id`和`file_path`，可选`payload.filename`设置展示文件名；每张JPG/PNG/WebP不超过8 MB。
+`genotyping.archive`只移除卡片显示，图片留在本机历史。所有写动作复用网页业务层，CLI在写入前备份。
+图片按用户提供的基因名称归档，不擅自OCR或根据条带更改小鼠基因型。请求文件与上传回执存放在仓库外。

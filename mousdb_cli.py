@@ -12,9 +12,10 @@ from runtime_paths import storage_paths
 from rack_layout import RackLayoutStore
 from experiment_plans import PlanStore
 from room_inventory import RoomInventoryStore
+from genotyping_media import GenotypingMediaStore,MAX_IMAGE_BYTES
 
-READ_ACTIONS={'mouse.list','mouse.get','cage.list','rack.list','rack.board','plan.list','references.list','mating.list'}
-ACTIONS=READ_ACTIONS|{'room.replace_inventory','cage.genotyping.update','mouse.create','mouse.update','cage.create','cage.update','cage.delete','rack.create','rack.move','rack.undo',
+READ_ACTIONS={'mouse.list','mouse.get','cage.list','rack.list','rack.board','plan.list','references.list','mating.list','genotyping.list','genotyping.get'}
+ACTIONS=READ_ACTIONS|{'genotyping.create','genotyping.update','genotyping.image.add','genotyping.archive','room.replace_inventory','cage.genotyping.update','mouse.create','mouse.update','cage.create','cage.update','cage.delete','rack.create','rack.move','rack.undo',
                     'plan.create','plan.update','reference.create','reference.update','mating.create','litter.create','litter.wean','event.create'}
 
 def mouse_id(db,params):
@@ -29,6 +30,18 @@ def dispatch(db,request):
     action=request.get('action');params=request.get('params') or {};payload=request.get('payload') or {}
     if action not in ACTIONS:raise ValidationError('不支持的操作：'+str(action))
     if not isinstance(params,dict) or not isinstance(payload,dict):raise ValidationError('params/payload必须为对象')
+    # 聊天和网页共用同一本机资料库；仅显式image.add读取用户指定文件，不做OCR。
+    media=GenotypingMediaStore(db)
+    if action=='genotyping.list':return media.list(params.get('category','protocol'))
+    if action=='genotyping.get':return media.get(int(params['document_id']))
+    if action=='genotyping.create':return media.save(payload)
+    if action=='genotyping.update':return media.save(payload,int(params['document_id']))
+    if action=='genotyping.archive':return media.archive(int(params['document_id']))
+    if action=='genotyping.image.add':
+        image=Path(params['file_path']).expanduser()
+        # 最多读取限额加1字节；误选大型文件时也不将整文件装入内存。
+        with image.open('rb') as stream:content=stream.read(MAX_IMAGE_BYTES+1)
+        return media.add_image(int(params['document_id']),content,payload.get('filename',image.name))
     if action=='room.replace_inventory':return RoomInventoryStore(db).replace(int(params['room_id']),payload)
     if action=='cage.genotyping.update':return db.set_cage_genotyping(int(params['cage_id']),payload)
     if action=='mouse.list':return db.list_mice(**params)
@@ -57,7 +70,7 @@ def dispatch(db,request):
     if action=='event.create':return db.add_event(mouse_id(db,params),payload)
 
 def initialize(db):
-    db.initialize();RackLayoutStore(db).initialize();PlanStore(db).initialize()
+    db.initialize();RackLayoutStore(db).initialize();PlanStore(db).initialize();GenotypingMediaStore(db).initialize()
 
 def main():
     parser=argparse.ArgumentParser(description='MousDB本地数据操作；数据不发送到网络')
