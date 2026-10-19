@@ -25,7 +25,7 @@ from db import Database, ValidationError
 from rack_layout import RackLayoutStore, LayoutConflict
 from experiment_plans import PlanStore
 from genotyping_media import GenotypingMediaStore, MAX_IMAGE_BYTES
-from runtime_paths import storage_paths
+from runtime_paths import storage_paths, configuration
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -86,7 +86,9 @@ class AppHandler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 return self._json(200, {"status": "ok", "version": "1.5.1", "schema": DB.integrity_check(), "database_id": str(DB_PATH.resolve()), "process_id": os.getpid()})
             if path == "/api/bootstrap":
-                return self._json(200, {"references": DB.list_references(), "next_code": DB.next_code()})
+                # 打印机地址仅从被Git忽略的本机配置读取，供侧栏展示；不连接打印机。
+                return self._json(200, {"references": DB.list_references(), "next_code": DB.next_code(),
+                                        "sidebar_printers": configuration().get("sidebar_printers", [])})
             # 明确排程独立保存；站内提醒只显示今天/明天的未完成计划。
             if path == "/api/plans/reminders": return self._json(200,PlanStore(DB).reminders())
             if path == "/api/plans": return self._json(200,PlanStore(DB).list())

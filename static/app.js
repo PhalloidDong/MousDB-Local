@@ -38,9 +38,22 @@ async function showPage(page) {
   try { await loaders[page](); } catch (error) { notify(error.message, "error"); }
 }
 
+function renderLocalPrinters(printers) {
+  /* 输入：本机配置的打印机分组；输出：侧栏底部文字地址，不发送打印或网络探测请求。
+   * 真实地址不写入公开源码；字段只做纯文本展示，缺少配置时隐藏整块。
+   */
+  const box=$("#local-printers");
+  const groups=Array.isArray(printers)?printers.filter(p=>p&&Array.isArray(p.addresses)):[];
+  box.innerHTML=groups.map(p=>{
+    const addresses=p.addresses.filter(a=>typeof a==="string"&&a.trim());
+    return addresses.length?`<div class="local-printer-group"><span>${esc(p.label||"打印机地址")}</span>${addresses.map(a=>`<span class="local-printer-address">${esc(a.trim())}</span>`).join("")}</div>`:"";
+  }).join("");
+  box.hidden=!box.childElementCount;
+}
+
 async function bootstrap() {
   const data = await api("/api/bootstrap"); state.refs = data.references;
-  fillFilters();
+  fillFilters();renderLocalPrinters(data.sidebar_printers);
 }
 
 function options(items, selected = "", blank = "— 未设置 —", label = "name") {

@@ -20,3 +20,5 @@ GitHub只保存Python/网页代码、文档、图标以及合成DEMO示例。仓
 可参考[GitHub关于敏感数据与Git历史的说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)。
 
 鉴定程序和鉴定结果原图以BLOB保存在同一个私有SQLite中，源码仓库不保存图片或资料清单。备份数据库也会包含原图；通过页面移除资料只会停用，原始证据保留在本机。软件不提取引物序列、PCR程序或自动判断基因型。
+
+侧栏打印机信息通过被忽略的`.mousdb-local.json`中`sidebar_printers`配置：每组包含`label`及`addresses`字符串列表。只在本机页面展示，不会连接或探测这些地址；实际地址不放入公开源码。
