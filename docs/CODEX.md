@@ -60,3 +60,5 @@ Codex可以总结本地记录并解释执行结果；禁止把输出粘贴到公
 `image.add`参数为`document_id`和`file_path`，可选`payload.filename`设置展示文件名；每张JPG/PNG/WebP不超过8 MB。
 `genotyping.archive`只移除卡片显示，图片留在本机历史。所有写动作复用网页业务层，CLI在写入前备份。
 图片按用户提供的基因名称归档，不擅自OCR或根据条带更改小鼠基因型。请求文件与上传回执存放在仓库外。
+
+鉴定结果（`category=result`）填写`strain`与`record_date`（YYYY-MM-DD），按品系和归档日期归类。同品系同日多批次共用一个列表入口，点开才显示各批原图；备注中的原始PCR日期不因归档日期而改写。

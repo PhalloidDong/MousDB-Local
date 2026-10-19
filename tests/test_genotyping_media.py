@@ -33,6 +33,32 @@ class GenotypingMediaTests(unittest.TestCase):
         self.assertEqual(copy.image(photo['id'])[0],DEMO_PNG)
         self.assertEqual(copy.get(card['id'])['title'],'DEMO renamed')
 
+    def test_result_grouping_survives_partial_edits_and_rejects_invalid_dates(self):
+        """输入独立品系/归档日；改标题保留分类和原图，无效日期整笔回滚。"""
+        card=self.store.save({'category':'result','title':'DEMO batch','strain':'DEMO lineage','record_date':'2026-02-28'})
+        photo=self.store.add_image(card['id'],DEMO_PNG,'DEMO.png')['images'][0]
+        edited=self.store.save({'title':'DEMO renamed'},card['id'])
+        self.assertEqual((edited['strain'],edited['record_date']),('DEMO lineage','2026-02-28'))
+        for day in ['2026-02-30','2026-2-01','not-a-date']:
+            with self.assertRaises(ValidationError):self.store.save({'record_date':day,'title':'must rollback'},card['id'])
+            self.assertEqual(self.store.get(card['id']),edited)
+        self.assertEqual(self.store.image(photo['id'])[0],DEMO_PNG)
+        self.assertEqual(len(self.store.list('result')),1)
+
+    def test_legacy_schema_migrates_without_guessing_or_changing_evidence(self):
+        """模拟旧版库缺少两列；升级两次仍幂等，未知分类留空且原图和备注不变。"""
+        card=self.store.save({'category':'result','title':'DEMO old','note':'DEMO evidence'})
+        photo=self.store.add_image(card['id'],DEMO_PNG,'DEMO.png')['images'][0]
+        with self.db.write() as conn:
+            # 只在TemporaryDirectory合成库模拟旧结构，绝不对正式数据执行删列。
+            conn.execute('ALTER TABLE genotyping_documents DROP COLUMN strain')
+            conn.execute('ALTER TABLE genotyping_documents DROP COLUMN record_date')
+        self.store.initialize();self.store.initialize()
+        migrated=self.store.get(card['id'])
+        self.assertEqual((migrated['strain'],migrated['record_date']),('',''))
+        self.assertEqual((migrated['title'],migrated['note']),('DEMO old','DEMO evidence'))
+        self.assertEqual(self.store.image(photo['id'])[0],DEMO_PNG)
+
     def test_categories_validation_and_files_do_not_use_paths(self):
         """目录隔离，拒绝无效文件；文件名即使含路径也只保存末级名称。"""
         card=self.store.save({'category':'result','title':'DEMO result'})

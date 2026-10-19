@@ -5,7 +5,8 @@
 本模块不做OCR、条带判断、基因型推断，也不修改任何小鼠、笼位或实验计划。
 """
 from __future__ import annotations
-import sqlite3
+import sqlite3,re
+from datetime import date
 from db import Database, ValidationError, now_text
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
@@ -22,6 +23,7 @@ class GenotypingMediaStore:
             conn.execute('''CREATE TABLE IF NOT EXISTS genotyping_documents(
                 id INTEGER PRIMARY KEY,category TEXT NOT NULL CHECK(category IN ('protocol','result')),
                 title TEXT NOT NULL,gene TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',
+                strain TEXT NOT NULL DEFAULT '',record_date TEXT NOT NULL DEFAULT '',
                 active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
                 created_at TEXT NOT NULL,updated_at TEXT NOT NULL)''')
             conn.execute('''CREATE TABLE IF NOT EXISTS genotyping_images(
@@ -30,6 +32,11 @@ class GenotypingMediaStore:
                 content BLOB NOT NULL,active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)),
                 created_at TEXT NOT NULL)''')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_genotyping_images_document ON genotyping_images(document_id,active)')
+            # 旧库只增加归类字段，未知值保持空，不从图片或标题猜测鉴定日期。
+            columns={row['name'] for row in conn.execute('PRAGMA table_info(genotyping_documents)')}
+            for column in ('strain','record_date'):
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE genotyping_documents ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def _text(value, label, maximum, required=False):
@@ -82,13 +89,21 @@ class GenotypingMediaStore:
             title = self._text(payload.get('title', old.get('title')), '标题', 200, True)
             gene = self._text(payload.get('gene', old.get('gene')), '基因名称', 150)
             note = self._text(payload.get('note', old.get('note')), '备注', 20000)
+            # 品系和归档日期独立保存，编辑标题不会改变分类；日期不等同于已执行PCR日期。
+            strain = self._text(payload.get('strain', old.get('strain')), '品系', 150)
+            record_date = self._text(payload.get('record_date', old.get('record_date')), '归档日期', 10)
+            if record_date:
+                try:
+                    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',record_date):raise ValueError
+                    date.fromisoformat(record_date)
+                except ValueError:raise ValidationError('归档日期须为有效的YYYY-MM-DD日期')
             stamp = now_text()
             if old:
-                conn.execute('UPDATE genotyping_documents SET category=?,title=?,gene=?,note=?,updated_at=? WHERE id=?',
-                             (category, title, gene, note, stamp, document_id))
+                conn.execute('UPDATE genotyping_documents SET category=?,title=?,gene=?,note=?,strain=?,record_date=?,updated_at=? WHERE id=?',
+                             (category, title, gene, note, strain, record_date, stamp, document_id))
             else:
-                document_id = conn.execute('INSERT INTO genotyping_documents(category,title,gene,note,created_at,updated_at) VALUES(?,?,?,?,?,?)',
-                                           (category, title, gene, note, stamp, stamp)).lastrowid
+                document_id = conn.execute('INSERT INTO genotyping_documents(category,title,gene,note,strain,record_date,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+                                           (category, title, gene, note, strain, record_date, stamp, stamp)).lastrowid
             self.db.audit(conn, 'update' if old else 'create', 'genotyping_document', document_id, '保存' + CATEGORIES[category] + '资料卡')
             return self._metadata(conn, self._row(conn, document_id))
 
