@@ -1,0 +1,122 @@
+/* 可切换主题层，加载在各页面样式之后。
+ * 浅色沿用现有马卡龙配色；深色用语义变量统一表面、文字、边框和六种笼状态。
+ * 这里只改变颜色，不改8×9架位尺寸、鼠记录或原始鉴定图片，不使用滤镜反转图像。
+ */
+:root{color-scheme:light}
+.topbar-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px}
+.theme-control{display:flex;align-items:center;gap:7px;color:#6F8277;font-size:11px}
+.theme-control select{font-size:12px;padding:8px 10px;min-width:108px;background:#FAFCF9;border-color:#DAE3DB}
+@media(max-width:560px){.topbar{gap:12px;flex-wrap:wrap}.topbar-actions{margin-left:auto}.theme-control select{min-width:98px}}
+
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#111A16;--card:#19251F;--text:#E1EBE4;--muted:#A9BBAE;--border:#3A4E41;
+  --blue:#80AE97;--blue-dark:#B8D8C6;--green:#90AE75;--danger:#EFADB9;--danger-bg:#422A31;
+  --shadow:0 8px 28px #00000025;
+  --theme-surface:#19251F;--theme-raised:#213128;--theme-inset:#152019;--theme-hover:#2B4033;
+  --theme-ink:#E1EBE4;--theme-soft:#C2D2C5;--theme-muted:#A9BBAE;--theme-line:#3A4E41;
+  --theme-accent:#A4CFB5;--theme-primary:#3D7057;--theme-primary-hover:#4D8467;
+  --rack-mint:#2D483A;--rack-rose:#51363A;--rack-apricot:#4D412B;
+  --rack-lavender:#443A51;--rack-blue:#2D4450;--rack-cream:#393D32;
+  --rack-ink:var(--theme-ink);--rack-muted:var(--theme-muted);--rack-line:var(--theme-line);
+  --rack-accent:var(--theme-accent);--rack-surface:var(--theme-surface);
+}
+/* 全局表面和控件：原生select、日期选择器、滚动条也通过color-scheme适配。 */
+[data-theme="dark"] body{background:var(--bg);color:var(--theme-ink)}
+[data-theme="dark"] .sidebar{background:var(--theme-inset);color:var(--theme-ink);border-color:var(--theme-line)}
+[data-theme="dark"] .brand-mark{background:#2B4939;color:#CBE4D3}
+[data-theme="dark"] :is(.brand small,.local-note,.local-printer-group>span:first-child,.local-printer-address){color:var(--theme-muted);border-color:var(--theme-line)}
+[data-theme="dark"] .sidebar nav button{background:transparent;color:var(--theme-soft)}
+[data-theme="dark"] .sidebar nav button:is(:hover,.active){background:#2C4938;color:#E3F1E8}
+[data-theme="dark"] :is(button,.button,input,select,textarea){background:var(--theme-surface);color:var(--theme-ink);border-color:var(--theme-line)}
+[data-theme="dark"] :is(button,.button):hover{border-color:#769C83}
+[data-theme="dark"] :is(input,textarea)::placeholder{color:#9BAEA0;opacity:1}
+[data-theme="dark"] :is(.primary,.success){background:var(--theme-primary);border-color:var(--theme-primary);color:#F1F8F3}
+[data-theme="dark"] :is(.primary,.success):hover{background:var(--theme-primary-hover)}
+[data-theme="dark"] :is(.topbar p,.theme-control,.muted,.loading,.empty,.cage-meta,.rich-help,.match-help){color:var(--theme-muted)}
+[data-theme="dark"] .topbar .ghost{background:var(--theme-surface);color:var(--theme-soft);border-color:var(--theme-line)}
+[data-theme="dark"] :is(button,input,select,textarea,[contenteditable]):focus-visible{outline:2px solid #A4CFB5;outline-offset:3px}
+[data-theme="dark"] :is(.metric,.panel,.cage-card,.mating-card,.table-wrap){background:var(--theme-surface);border-color:var(--theme-line)}
+[data-theme="dark"] :is(th,.badge){background:var(--theme-raised);color:var(--theme-soft)}
+[data-theme="dark"] :is(td,th,.audit-row,.litter-row,.import-row){border-color:var(--theme-line)}
+[data-theme="dark"] :is(.metric b,.capacity,.code-link){color:var(--theme-accent)}
+[data-theme="dark"] .code-link{background:transparent}
+[data-theme="dark"] :is(.badge.Dead,.warning-text){background:var(--danger-bg);color:var(--danger)}
+[data-theme="dark"] .badge.Experimental{background:#51363A;color:#F3C1C5}
+[data-theme="dark"] .badge.Transferred{background:#3B3D46;color:#D1D5E8}
+/* 弹窗、富文本字典、关系匹配：覆盖详情/新增/编辑和所有下拉建议。 */
+[data-theme="dark"] dialog{background:var(--theme-surface);color:var(--theme-ink);box-shadow:0 24px 90px #0009}
+[data-theme="dark"] dialog::backdrop{background:#020A06B8}
+[data-theme="dark"] :is(.dialog-close,.ghost){background:transparent}
+[data-theme="dark"] .detail-grid div{background:var(--theme-inset)}
+[data-theme="dark"] :is(.rich-tool,.rich-symbol,.rich-editor,.rich-suggestions,.rich-option,.rich-symbol-menu,.match-suggestions,.match-option){background:var(--theme-surface);border-color:var(--theme-line);color:var(--theme-ink)}
+[data-theme="dark"] :is(.rich-tool,.rich-symbol,.rich-option,.match-option):hover{background:var(--theme-hover)}
+[data-theme="dark"] .rich-editor:empty:before{color:var(--theme-muted)}
+[data-theme="dark"] :is(.cage-mouse-row,.rack-new-mouse-row){background:var(--theme-inset);border-color:var(--theme-line)}
+[data-theme="dark"] .cage-delete-button{background:#422E2B;color:#F0B9AF;border-color:#765049}
+[data-theme="dark"] .notice{background:#304C3B;color:#F0F7F2}
+[data-theme="dark"] .notice.error{background:#683F49;color:#FFF2F5}
+[data-theme="dark"] .notice.warning{background:#685334;color:#FFF4E1}
+/* 真实架子：颜色仍表达原有六种状态，卡片内部使用较亮文字，状态同时保留文字标签。 */
+[data-theme="dark"] :is(.rack-location-bar,.rack-parking-panel,.rack-plan-reminders,.rack-onboarding){background:var(--theme-surface);border-color:var(--theme-line)}
+[data-theme="dark"] :is(.rack-location-actions select,.rack-location-actions button,.rack-search-wrap input,.rack-zoom-label select,#rack-undo,.rack-new-parked){background:var(--theme-surface);border-color:var(--theme-line);color:var(--theme-soft)}
+[data-theme="dark"] :is(.rack-eyebrow,.rack-slash,.rack-location-actions label,.rack-location-note,.rack-summary-strip span,.rack-summary-strip b small,.rack-search-wrap>span,.rack-zoom-label,.rack-legend,.rack-legend .rack-legend-hint){color:var(--theme-muted)}
+[data-theme="dark"] .rack-summary-strip{border-color:var(--theme-line)}
+[data-theme="dark"] :is(.rack-summary-strip b,.rack-summary-strip .rack-save-state){color:var(--theme-accent)}
+[data-theme="dark"] .legend-dot{border-color:#6D8374}
+[data-theme="dark"] .rack-board-panel{background:var(--theme-inset);border-color:var(--theme-line)}
+[data-theme="dark"] :is(.rack-board-toolbar,.rack-board-help){background:var(--theme-surface);border-color:var(--theme-line);color:var(--theme-muted)}
+[data-theme="dark"] :is(.rack-board-toolbar strong,.rack-board-toolbar span){color:var(--theme-muted)}
+[data-theme="dark"] .rack-board-scroll{scrollbar-color:#526E5B var(--theme-inset)}
+[data-theme="dark"] .rack-slot{background:#18231B;border-color:#425747}
+[data-theme="dark"] .rack-slot.occupied{background:transparent;border-color:transparent}
+[data-theme="dark"] :is(.rack-slot-label,.rack-empty-add,.rack-empty-add small){color:#A6B9A8}
+[data-theme="dark"] .rack-empty-add{background:transparent;border:0}
+[data-theme="dark"] .rack-empty-add:hover{background:var(--theme-hover);color:#D6E6D6}
+[data-theme="dark"] .rack-empty-add:hover small{color:#D6E6D6}
+[data-theme="dark"] .rack-card{background:var(--theme-surface);color:var(--theme-ink);border-color:#506653;box-shadow:0 2px 7px #0002}
+[data-theme="dark"] .rack-card:hover{border-color:#8FAE95;box-shadow:0 4px 15px #0004}
+[data-theme="dark"] .rack-card-handle{border-color:#ffffff0D}
+[data-theme="dark"] :is(.rack-cage-name,.rack-cage-name:hover){background:transparent;color:var(--theme-ink)}
+[data-theme="dark"] :is(.rack-grip,.rack-count,.rack-state-chip,.rack-coordinate,.rack-card-menu){color:var(--theme-soft)}
+[data-theme="dark"] .rack-card-tools{background:var(--theme-inset);border-color:var(--theme-line)}
+[data-theme="dark"] .rack-state-chip{background:var(--state-bg)}
+[data-theme="dark"] .rack-card-menu{background:transparent;border:0}
+[data-theme="dark"] .rack-card-body{scrollbar-color:#526E5B transparent}
+[data-theme="dark"] :is(.rack-mouse-head,.rack-mouse-row){border-color:#334638}
+[data-theme="dark"] :is(.rack-mouse-head,.rack-age,.rack-individual-genotype,.rack-card-empty){color:var(--theme-soft)}
+[data-theme="dark"] :is(.rack-ear,.rack-ear:hover){color:#C5E4CC;background:transparent}
+[data-theme="dark"] :is(.rack-sex,.rack-sex.M){color:#A6CFE3}
+[data-theme="dark"] .rack-sex.F{color:#E4B2C3}
+[data-theme="dark"] .rack-card-bottom{background:var(--theme-inset);border-color:var(--theme-line)}
+[data-theme="dark"] .rack-card-bottom button{background:transparent;color:var(--theme-muted)}
+[data-theme="dark"] .rack-card-bottom button:hover{color:#D4ECD9}
+[data-theme="dark"] .rack-genotyping-flag{background:#42354C;border-color:#74617F;color:#DFC7EF}
+[data-theme="dark"] :is(.rack-parking-title h2,.rack-parking-title h2 small){color:var(--theme-soft)}
+[data-theme="dark"] .rack-parking-title h2 small{background:var(--theme-raised)}
+[data-theme="dark"] :is(.rack-parking-title p,.rack-parking-placeholder,.rack-parking-placeholder small,.rack-onboarding p){color:var(--theme-muted)}
+[data-theme="dark"] .rack-parking{background:var(--theme-inset);border-color:#526E5B;scrollbar-color:#526E5B transparent}
+[data-theme="dark"] .rack-target{background:var(--theme-hover)!important;outline-color:#A4CFB5}
+/* 实验提醒和计划弹窗：今天/明天使用不同的低饱和度底色。 */
+[data-theme="dark"] :is(.plan-reminder-heading strong,.plan-reminder-heading button,.plan-empty,.plan-status,.plan-list-date small,.plan-list-content>small,.plan-list-content details){color:var(--theme-soft)}
+[data-theme="dark"] .plan-reminder-heading button{background:transparent}
+[data-theme="dark"] .plan-reminder-item{background:#443A2C;border-color:#746349;color:#F0D8B1}
+[data-theme="dark"] .plan-reminder-item.today{background:#4B3334;border-color:#785353;color:#F3C3BE}
+[data-theme="dark"] .plan-list-row{border-color:var(--theme-line)}
+[data-theme="dark"] .has-due-plans{animation-name:plan-arrive-dark}
+@keyframes plan-arrive-dark{from{background:#304638}to{background:#19251F}}
+/* 鉴定目录和原图查看器：只调整周围界面，原图像素/颜色和白底保持原样。 */
+[data-theme="dark"] :is(.media-library-bar,.media-document-card,.media-result-entry,.media-library-empty){background:var(--theme-surface);border-color:var(--theme-line);color:var(--theme-ink)}
+[data-theme="dark"] :is(.media-eyebrow,.media-library-bar p,.media-library-tools>span,.media-card-info>span,.media-card-info small,.media-result-entry>span:not(.media-result-date),.media-result-entry small,.media-result-summary,.media-photo-card figcaption){color:var(--theme-muted)}
+[data-theme="dark"] :is(.media-library-tools input,#genotyping-viewer,.media-viewer-actions button){background:var(--theme-surface);color:var(--theme-ink);border-color:var(--theme-line)}
+[data-theme="dark"] :is(.media-document-card:hover,.media-result-entry:hover){background:var(--theme-raised);border-color:#8FAE95}
+[data-theme="dark"] :is(.media-card-cover,.media-cover-empty){background:var(--theme-inset);border-color:var(--theme-line);color:var(--theme-muted)}
+[data-theme="dark"] .media-image-count{background:#213128ED;color:#C2D2C5}
+[data-theme="dark"] :is(.media-result-date,.media-result-group h2,.media-photo-card figcaption a,.media-upload-progress){color:var(--theme-accent)}
+[data-theme="dark"] .media-viewer-heading p{color:var(--theme-muted)}
+[data-theme="dark"] .media-document-note{background:var(--theme-inset);color:var(--theme-soft)}
+[data-theme="dark"] .media-result-batch+.media-result-batch{border-color:var(--theme-line)}
+[data-theme="dark"] .media-photo-card{background:var(--theme-surface);border-color:var(--theme-line)}
+[data-theme="dark"] .media-photo-card>a{background:var(--theme-inset)}
+[data-theme="dark"] :is(.media-viewer-actions .media-remove,.media-photo-card figcaption button){color:#E8B1A7}
+

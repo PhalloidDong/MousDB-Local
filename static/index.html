@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="light dark">
+  <!-- 同步初始化主题在样式前执行，避免深色模式首屏闪白。 -->
+  <script src="/theme.js"></script>
   <title>MousDB Local v1.5.1</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/rack.css">
   <link rel="stylesheet" href="/plans.css">
   <link rel="stylesheet" href="/genotyping.css">
+  <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
   <aside class="sidebar">
@@ -28,7 +31,7 @@
   </aside>
 
   <main>
-    <header class="topbar"><div><h1 id="page-title">动物房架位</h1><p id="page-subtitle">与真实笼位一一对应</p></div><button id="refresh" class="ghost">刷新</button></header>
+    <header class="topbar"><div><h1 id="page-title">动物房架位</h1><p id="page-subtitle">与真实笼位一一对应</p></div><div class="topbar-actions"><label class="theme-control" for="theme-choice"><span>外观</span><select id="theme-choice" aria-label="外观主题"><option value="light">浅色</option><option value="dark">深色</option><option value="system" selected>跟随系统</option></select></label><button id="refresh" class="ghost">刷新</button></div></header>
     <div id="notice" role="status" aria-live="polite"></div>
 
     <section id="page-rack" class="page active"><div id="rack-home" aria-live="polite">正在载入架子……</div></section>
