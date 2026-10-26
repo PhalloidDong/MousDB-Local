@@ -119,4 +119,3 @@
 [data-theme="dark"] .media-photo-card{background:var(--theme-surface);border-color:var(--theme-line)}
 [data-theme="dark"] .media-photo-card>a{background:var(--theme-inset)}
 [data-theme="dark"] :is(.media-viewer-actions .media-remove,.media-photo-card figcaption button){color:#E8B1A7}
-
